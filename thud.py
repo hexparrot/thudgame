@@ -9,7 +9,6 @@ __email__ = "wdchromium@gmail.com"
 from thudclasses import *
 
 import copy
-import tkinter
 import math
 import re
 import itertools

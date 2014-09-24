@@ -222,22 +222,17 @@ class Ply:
     @staticmethod
     def parse_string(ply_notation):
         """Accepts a string indicating a full move, parses into a ply"""
-        regex_ply_notation = r"([T|d|R])([A-HJ-P])([0-9]+)-([A-HJ-P])([0-9]+)(.*)"
-        compiled_notation = re.compile(regex_ply_notation)
+        import re
+
+        side = {    'd': 'dwarf',
+                    'T': 'troll',
+                    'R': 'thudstone' }
+
+        REGEX_NOTATION_PLY = r"([T|d|R])([A-HJ-P])([0-9]+)-([A-HJ-P])([0-9]+)(.*)"
+        compiled_notation = re.compile(REGEX_NOTATION_PLY)
         m = compiled_notation.search(str(ply_notation))
         if m:
-            return Ply(m.group(1), \
-                       Notation(Notation.to_number.get(m.group(2)), int(m.group(3))-1), \
-                       Notation(Notation.to_letter.get(m.group(4)), int(m.group(5))-1), \
-                       m.group(6).split('x')[1:])
-
-
-
-
-
-
-
-
-
-
-
+            return Ply(side.get(m.group(1)), \
+                        Ply.notation_to_position(m.group(2) + m.group(3)), \
+                        Ply.notation_to_position(m.group(4) + m.group(5)), \
+                        list(map(Ply.notation_to_position, m.group(6).split('x')[1:])))
