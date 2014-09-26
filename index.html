@@ -6,46 +6,53 @@
     <div id="gameboard"></div>
     <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/kineticjs/5.0.6/kinetic.min.js"></script>
     <script defer="defer">
-      var gameboard_px = 600;
-      var gameboard_squares = 15;
-      var square_size = gameboard_px/gameboard_squares;
+      var BOARD_WIDTH = 600;
+      var BOARD_SQUARES = 15;
+      var PIXELS_PER_SQUARE = BOARD_WIDTH/BOARD_SQUARES;
 
       var stage = new Kinetic.Stage({
         container: 'gameboard',
-        width: gameboard_px,
-        height: gameboard_px
-      });
-      var grid = new Kinetic.Layer();
-      var piece_layer = new Kinetic.Layer();
+        width: BOARD_WIDTH,
+        height: BOARD_WIDTH
+      })
 
-      stage.add(grid);
-      stage.add(piece_layer);
+      var layer_gameboard = new Kinetic.Layer();
+      var layer_pieces = new Kinetic.Layer();
 
-      var images = {
+      stage.add(layer_gameboard);
+      stage.add(layer_pieces);
+
+      var assets = {
         board: new Image(),
         thudstone: new Image(),
         troll: new Image(),
         dwarf: new Image()
       }
 
-      images['board'].onload = function() {
-        var b = new Kinetic.Image({
+      assets['board'].onload = function() {
+        var grid = new Kinetic.Image({
           x: 0,
           y: 0,
-          image: images['board'],
-          width: gameboard_px,
-          height: gameboard_px
-        });
-        grid.add(b);
+          image: assets['board'],
+          width: BOARD_WIDTH,
+          height: BOARD_WIDTH
+        })
+        layer_gameboard.add(grid);
         stage.draw();
-      };
+      }
 
-      images['board'].src = 'tb.gif';
-      images['thudstone'].src = 'thudstone.gif';
-      images['troll'].src = 'rook.gif';
-      images['dwarf'].src = 'pawn.gif';
+      assets['thudstone'].onload = function() { 
+        assets['troll'].onload = function() {
+          assets['dwarf'].onload = function() {
+            assets['board'].src = 'tb.gif';
+          }
+          assets['dwarf'].src = 'pawn.gif';
+        }
+        assets['troll'].src = 'rook.gif';
+      }
+      assets['thudstone'].src = 'thudstone.gif';
 
-      var game_pieces = {};
+      /* game resources */
 
       PIECES = {
           d: 'dwarf',
@@ -60,7 +67,9 @@
                     6: 'F', 7: 'G', 8: 'H', 9: 'J', 10:'K',
                     11:'L', 12:'M', 13:'N', 14:'O', 15:'P' }
 
-      CLASSIC_POSITIONS = 'dF1,dG1,dJ1,dK1,dE2,dL2,dD3,dM3,dC4,dN4,dB5,dO5,dA6,dP6,dA7,dP7,dA9,dP9,dA10,dP10,dB11,dO11,dC12,dN12,dD13,dM13,dE14,dL14,dF15,dG15,dJ15,dK15,TG7,TH7,TJ7,TG8,TJ8,TG9,TH9,TJ9,RH8'
+      CLASSIC_POSITIONS = 'dF1,dG1,dJ1,dK1,dE2,dL2,dD3,dM3,dC4,dN4,dB5,dO5,dA6,dP6,dA7,dP7,dA9,dP9,dA10,dP10,dB11,dO11,dC12,dN12,dD13,dM13,dE14,dL14,dF15,dG15,dJ15,dK15,TG7,TH7,TJ7,TG8,TJ8,TG9,TH9,TJ9,RH8';
+
+      var game_pieces = {};
 
       function setup_game(positions) {
         pieces = positions.split(',');
@@ -75,110 +84,117 @@
         var piece = new Kinetic.Image({
           x: coords.x,
           y: coords.y,
-          image: images[side],
-          width: square_size,
-          height: square_size,
+          image: assets[side],
+          width: PIXELS_PER_SQUARE,
+          height: PIXELS_PER_SQUARE,
           team: side,
-          draggable: (side == 'thudstone' ? false : true),
-        });
+          draggable: (side == 'thudstone' ? false : true)
+        })
 
-        piece_layer.add(piece);
+        layer_pieces.add(piece);
         stage.draw();
 
         piece.on('dragstart', function(e) {
-          start_coords = {
-            x: e.target.x(),
-            y: e.target.y()
-          }
+          piece.origin = coords_to_notation({
+            x: e.evt.layerX,
+            y: e.evt.layerY
+          });
+
           piece.opacity(.5);
           piece.moveToTop();
-          piece.started_at = start_coords;
-          console.log(side + ' picked up from ' + coords_to_notation(start_coords));
-        });
-        
+          console.log(side + ' picked up from ' + piece.origin);
+        })
+
         piece.on('dragend', function(e) {
-          end_coords = {
+          destination = {
             x: e.evt.layerX,
-            y: e.evt.layerY,
+            y: e.evt.layerY
           }
-          piece.opacity(1);
-          piece.setAbsolutePosition(piece.started_at);
+
+          piece.opacity(1.0);
+          piece.setAbsolutePosition(notation_to_coords(piece.origin));
           stage.draw();
-          console.log(side + ' dropped on ' + coords_to_notation(end_coords));
-        });
+          console.log(side + ' dropped on ' + coords_to_notation(destination));
+        })
 
         game_pieces[position] = piece;
+      }
+
+      function notation_to_coords(position) {
+        return {
+          x: (TO_NUMBERS[position[0]] - 1) * PIXELS_PER_SQUARE,
+          y: (parseInt(position.slice(1)) - 1) * PIXELS_PER_SQUARE
+        }
+      }
+
+      function coords_to_notation(coords) {
+        file = TO_LETTERS[Math.floor(coords.x / PIXELS_PER_SQUARE) + 1]
+        rank = Math.floor(coords.y / PIXELS_PER_SQUARE) + 1;
+
+        return file + rank.toString();
       }
 
       function move_piece(starting_position, ending_position) {
         starting_position = starting_position.toUpperCase();
         ending_position = ending_position.toUpperCase();
-
+        
+        var active_piece = game_pieces[starting_position];
         var coords = notation_to_coords(ending_position);
-        game_pieces[starting_position].moveToTop();
+
+        if (ending_position in game_pieces)
+          throw 'invalid move (piece already present at destination)'
+
+        active_piece.moveToTop();
+        game_pieces[ending_position] = game_pieces[starting_position];
 
         var tween = new Kinetic.Tween({
-          node: game_pieces[starting_position],
-          duration: 1,
+          node: active_piece,
+          duration: 1.5,
           x: coords.x,
           y: coords.y,
           easing: Kinetic.Easings.EaseInOut
         });
-
-        game_pieces[ending_position] = game_pieces[starting_position];
+        
         tween.play();
       }
 
       function remove_piece(position) {
         position = position.toUpperCase();
 
-        game_pieces[position].remove();
-        delete game_pieces[position];
-        stage.draw();
+        if (position in game_pieces) {
+          game_pieces[position].remove();
+          delete game_pieces[position];
+          stage.draw();
+        } else {
+          console.error('attempted to remove absent piece at ' + position);
+        }
       }
 
       function make_capture(starting_position, ending_position, captured_positions) {
         starting_position = starting_position.toUpperCase();
         ending_position = ending_position.toUpperCase();
-
-        var start = game_pieces[starting_position];
-        var end = game_pieces[ending_position];
-
+        
+        var active_piece = game_pieces[starting_position];
         var coords = notation_to_coords(ending_position);
-        game_pieces[starting_position].moveToTop();
+
+        active_piece.moveToTop();
 
         var tween = new Kinetic.Tween({
-          node: game_pieces[starting_position],
+          node: active_piece,
           duration: 1,
           x: coords.x,
           y: coords.y,
           easing: Kinetic.Easings.EaseInOut,
           onFinish: function() {
             for (var p in captured_positions) 
-              remove_piece(captured_positions[p].toUpperCase())
+              remove_piece(captured_positions[p]);
 
-            game_pieces[ending_position] = game_pieces[starting_position];
+            game_pieces[ending_position] = active_piece;
           }
         }).play();
+
       }
 
-      function notation_to_coords(position) {
-        return {
-          x: (TO_NUMBERS[position[0]] - 1) * square_size,
-          y: (parseInt(position.slice(1)) - 1) * square_size
-        }
-      }
-
-      function coords_to_notation(coords) {
-        file = TO_LETTERS[Math.floor(coords.x / square_size) + 1]
-        rank = Math.floor(coords.y / square_size) + 1;
-
-        return file + rank.toString();
-      }
-
-      stage.on('click', function() {
-        console.log( coords_to_notation(stage.getPointerPosition()) )
-      })
 
     </script>
   </body>
