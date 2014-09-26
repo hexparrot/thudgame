@@ -21,14 +21,9 @@
       stage.add(grid);
       stage.add(piece_layer);
 
-      var assets = {
-        thudboard: 'tb.gif',
-        dwarf: 'pawn.gif',
-        troll: 'rook.gif'
-      }
-
       var images = {
         board: new Image(),
+        thudstone: new Image(),
         troll: new Image(),
         dwarf: new Image()
       }
@@ -46,10 +41,33 @@
       };
 
       images['board'].src = 'tb.gif';
+      images['thudstone'].src = 'thudstone.gif';
       images['troll'].src = 'rook.gif';
       images['dwarf'].src = 'pawn.gif';
 
       var game_pieces = {};
+
+      PIECES = {
+          d: 'dwarf',
+          t: 'troll',
+          r: 'thudstone'
+        }
+
+      TO_NUMBERS = {'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5,
+                    'F': 6, 'G': 7, 'H': 8, 'J': 9, 'K': 10,
+                    'L': 11,'M': 12,'N': 13,'O': 14,'P': 15 }
+      TO_LETTERS = {1: 'A', 2: 'B', 3: 'C', 4: 'D', 5: 'E',
+                    6: 'F', 7: 'G', 8: 'H', 9: 'J', 10:'K',
+                    11:'L', 12:'M', 13:'N', 14:'O', 15:'P' }
+
+      CLASSIC_POSITIONS = 'dF1,dG1,dJ1,dK1,dE2,dL2,dD3,dM3,dC4,dN4,dB5,dO5,dA6,dP6,dA7,dP7,dA9,dP9,dA10,dP10,dB11,dO11,dC12,dN12,dD13,dM13,dE14,dL14,dF15,dG15,dJ15,dK15,TG7,TH7,TJ7,TG8,TJ8,TG9,TH9,TJ9,RH8'
+
+      function start_classic() {
+        pieces = CLASSIC_POSITIONS.split(',');
+
+        for (var p in pieces)
+          materialize_piece(pieces[p].slice(1), PIECES[pieces[p][0].toLowerCase()]);
+      }
 
       function materialize_piece(position, side) {
         var coords = notation_to_coords(position);
@@ -61,7 +79,7 @@
           width: square_size,
           height: square_size,
           team: side,
-          draggable: true,
+          draggable: (side == 'thudstone' ? false : true),
         });
 
         piece_layer.add(piece);
@@ -118,10 +136,6 @@
       }
 
       function notation_to_coords(position) {
-        TO_NUMBERS = {'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5,
-                      'F': 6, 'G': 7, 'H': 8, 'J': 9, 'K': 10,
-                      'L': 11,'M': 12,'N': 13,'O': 14,'P': 15 }
-
         return {
           x: (TO_NUMBERS[position[0]] - 1) * square_size,
           y: (parseInt(position.slice(1)) - 1) * square_size
@@ -129,10 +143,6 @@
       }
 
       function coords_to_notation(coords) {
-        TO_LETTERS = {1: 'A', 2: 'B', 3: 'C', 4: 'D', 5: 'E',
-                      6: 'F', 7: 'G', 8: 'H', 9: 'J', 10:'K',
-                      11:'L', 12:'M', 13:'N', 14:'O', 15:'P' }
-
         file = TO_LETTERS[Math.floor(coords.x / square_size) + 1]
         rank = Math.floor(coords.y / square_size) + 1;
 
