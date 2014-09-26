@@ -39,10 +39,12 @@
       board_image.src = 'tb.gif';
       dwarf_image.src = 'pawn.gif';
 
-      function draw_dwarf(x,y) {
+      var game_pieces = {};
+
+      function draw_dwarf(position) {
       	var dwarf = new Kinetic.Image({
-          x: notation_to_coords(x),
-          y: notation_to_coords(y),
+          x: notation_to_coords(position[0]),
+          y: notation_to_coords(position.slice(1)),
           image: dwarf_image,
           width: square_size,
           height: square_size
@@ -50,23 +52,30 @@
 
         piece_layer.add(dwarf);
         stage.draw();
-        return dwarf;
+        game_pieces[position] = dwarf;
       }
 
-      function move_dwarf(object, new_x, new_y) {
-      	/*object.move(new_x, new_y);
-      	stage.draw();*/
+      function move_dwarf(starting_position, ending_position) {
       	var tween = new Kinetic.Tween({
-	        node: object,
+	        node: game_pieces[starting_position],
 	        duration: 2,
-	        x: notation_to_coords(new_x),
-	        y: notation_to_coords(new_y),
+	        x: notation_to_coords(ending_position[0]),
+	        y: notation_to_coords(ending_position.slice(1)),
 		    });
-		    return tween;
+		    game_pieces[ending_position] = game_pieces[starting_position];
+		    delete game_pieces[starting_position];
+		    tween.play();
       }
 
-      function notation_to_coords(val) {
-      	return (val-1) * square_size;
+      function notation_to_coords(position) {
+    		TO_NUMBERS = {'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5,
+                 	 		'F': 6, 'G': 7, 'H': 8, 'J': 9, 'K': 10,
+                 	 		'L': 11,'M': 12,'N': 13,'O': 14,'P': 15 }
+
+        if (isNaN(position)) 
+        	return (TO_NUMBERS[position] - 1) * square_size
+        else
+        	return (position - 1) * square_size;
       }
 
 
