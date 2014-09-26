@@ -1,0 +1,77 @@
+<!DOCTYPE HTML>
+<html>
+  <head>
+  </head>
+  <body>
+    <div id="gameboard"></div>
+    <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/kineticjs/5.0.6/kinetic.min.js"></script>
+    <script defer="defer">
+    	var gameboard_px = 600;
+			var gameboard_squares = 15;
+			var square_size = gameboard_px/gameboard_squares;
+
+      var stage = new Kinetic.Stage({
+        container: 'gameboard',
+        width: gameboard_px,
+        height: gameboard_px
+      });
+      var grid = new Kinetic.Layer();
+      var piece_layer = new Kinetic.Layer();
+
+      var board_image = new Image();
+      board_image.onload = function() {
+        var board = new Kinetic.Image({
+          x: 0,
+          y: 0,
+          image: board_image,
+          width: gameboard_px,
+          height: gameboard_px
+        });
+
+        grid.add(board);
+        stage.add(grid);
+        stage.add(piece_layer);
+      };
+
+      var dwarf_image = new Image();
+      var troll_image = new Image();
+
+      board_image.src = 'tb.gif';
+      dwarf_image.src = 'pawn.gif';
+
+      function draw_dwarf(x,y) {
+      	var dwarf = new Kinetic.Image({
+          x: notation_to_coords(x),
+          y: notation_to_coords(y),
+          image: dwarf_image,
+          width: square_size,
+          height: square_size
+        });
+
+        piece_layer.add(dwarf);
+        stage.draw();
+        return dwarf;
+      }
+
+      function move_dwarf(object, new_x, new_y) {
+      	/*object.move(new_x, new_y);
+      	stage.draw();*/
+      	var tween = new Kinetic.Tween({
+	        node: object,
+	        duration: 2,
+	        x: notation_to_coords(new_x),
+	        y: notation_to_coords(new_y),
+		    });
+		    return tween;
+      }
+
+      function notation_to_coords(val) {
+      	return (val-1) * square_size;
+      }
+
+
+
+
+    </script>
+  </body>
+</html>
