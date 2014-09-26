@@ -90,6 +90,8 @@
             x: e.target.x(),
             y: e.target.y()
           }
+          piece.opacity(.5);
+          piece.started_at = start_coords;
           console.log(side + ' picked up from ' + coords_to_notation(start_coords));
         });
         
@@ -98,8 +100,9 @@
             x: e.evt.layerX,
             y: e.evt.layerY,
           }
-
-          move_piece(position, coords_to_notation(end_coords));
+          piece.opacity(1);
+          piece.setAbsolutePosition(piece.started_at);
+          stage.draw();
           console.log(side + ' dropped on ' + coords_to_notation(end_coords));
         });
 
