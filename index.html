@@ -52,9 +52,11 @@
       var game_pieces = {};
 
       function materialize_piece(position, piece) {
+        var coords = notation_to_coords(position);
+
         var piece = new Kinetic.Image({
-          x: notation_to_coords(position[0]),
-          y: notation_to_coords(position.slice(1)),
+          x: coords.x,
+          y: coords.y,
           image: images[piece],
           width: square_size,
           height: square_size
@@ -66,11 +68,13 @@
       }
 
       function move_piece(starting_position, ending_position) {
+        var coords = notation_to_coords(ending_position);
+
         var tween = new Kinetic.Tween({
           node: game_pieces[starting_position],
           duration: 2,
-          x: notation_to_coords(ending_position[0]),
-          y: notation_to_coords(ending_position.slice(1)),
+          x: coords.x,
+          y: coords.y
         });
         game_pieces[ending_position] = game_pieces[starting_position];
         delete game_pieces[starting_position];
@@ -82,11 +86,26 @@
                       'F': 6, 'G': 7, 'H': 8, 'J': 9, 'K': 10,
                       'L': 11,'M': 12,'N': 13,'O': 14,'P': 15 }
 
-        if (isNaN(position)) 
-          return (TO_NUMBERS[position] - 1) * square_size
-        else
-          return (position - 1) * square_size;
+        return {
+          x: (TO_NUMBERS[position[0]] - 1) * square_size,
+          y: (parseInt(position.slice(1)) - 1) * square_size
+        }
       }
+
+      function coords_to_notation(coords) {
+        TO_LETTERS = {1: 'A', 2: 'B', 3: 'C', 4: 'D', 5: 'E',
+                      6: 'F', 7: 'G', 8: 'H', 9: 'J', 10:'K',
+                      11:'L', 12:'M', 13:'N', 14:'O', 15:'P' }
+
+        file = TO_LETTERS[Math.floor(coords.x / square_size) + 1]
+        rank = Math.floor(coords.y / square_size) + 1;
+
+        return file + rank.toString();
+      }
+
+      stage.on('click', function() {
+        console.log( coords_to_notation(stage.getPointerPosition()) )
+      })
 
     </script>
   </body>
