@@ -91,6 +91,7 @@
             y: e.target.y()
           }
           piece.opacity(.5);
+          piece.moveToTop();
           piece.started_at = start_coords;
           console.log(side + ' picked up from ' + coords_to_notation(start_coords));
         });
@@ -110,32 +111,55 @@
       }
 
       function move_piece(starting_position, ending_position) {
+        starting_position = starting_position.toUpperCase();
+        ending_position = ending_position.toUpperCase();
+
         var coords = notation_to_coords(ending_position);
+        game_pieces[starting_position].moveToTop();
 
         var tween = new Kinetic.Tween({
           node: game_pieces[starting_position],
           duration: 1,
           x: coords.x,
-          y: coords.y
+          y: coords.y,
+          easing: Kinetic.Easings.EaseInOut
         });
+
         game_pieces[ending_position] = game_pieces[starting_position];
         tween.play();
       }
 
       function remove_piece(position) {
+        position = position.toUpperCase();
+
         game_pieces[position].remove();
         delete game_pieces[position];
         stage.draw();
       }
 
       function make_capture(starting_position, ending_position, captured_positions) {
+        starting_position = starting_position.toUpperCase();
+        ending_position = ending_position.toUpperCase();
+
         var start = game_pieces[starting_position];
         var end = game_pieces[ending_position];
 
-        move_piece(starting_position, ending_position);
+        var coords = notation_to_coords(ending_position);
+        game_pieces[starting_position].moveToTop();
 
-        for (var p in captured_positions) 
-          remove_piece(captured_positions[p])
+        var tween = new Kinetic.Tween({
+          node: game_pieces[starting_position],
+          duration: 1,
+          x: coords.x,
+          y: coords.y,
+          easing: Kinetic.Easings.EaseInOut,
+          onFinish: function() {
+            for (var p in captured_positions) 
+              remove_piece(captured_positions[p].toUpperCase())
+
+            game_pieces[ending_position] = game_pieces[starting_position];
+          }
+        }).play();
       }
 
       function notation_to_coords(position) {
