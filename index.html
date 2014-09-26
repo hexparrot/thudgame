@@ -59,7 +59,8 @@
           y: coords.y,
           image: images[piece],
           width: square_size,
-          height: square_size
+          height: square_size,
+          team: piece
         });
 
         piece_layer.add(piece);
@@ -77,8 +78,23 @@
           y: coords.y
         });
         game_pieces[ending_position] = game_pieces[starting_position];
-        delete game_pieces[starting_position];
         tween.play();
+      }
+
+      function remove_piece(position) {
+        game_pieces[position].remove();
+        delete game_pieces[position];
+        stage.draw();
+      }
+
+      function make_capture(starting_position, ending_position, captured_positions) {
+        var start = game_pieces[starting_position];
+        var end = game_pieces[ending_position];
+
+        move_piece(starting_position, ending_position);
+
+        for (var p in captured_positions) 
+          remove_piece(captured_positions[p])
       }
 
       function notation_to_coords(position) {
