@@ -51,20 +51,40 @@
 
       var game_pieces = {};
 
-      function materialize_piece(position, piece) {
+      function materialize_piece(position, side) {
         var coords = notation_to_coords(position);
 
         var piece = new Kinetic.Image({
           x: coords.x,
           y: coords.y,
-          image: images[piece],
+          image: images[side],
           width: square_size,
           height: square_size,
-          team: piece
+          team: side,
+          draggable: true,
         });
 
         piece_layer.add(piece);
         stage.draw();
+
+        piece.on('dragstart', function(e) {
+          start_coords = {
+            x: e.target.x(),
+            y: e.target.y()
+          }
+          console.log(side + ' picked up from ' + coords_to_notation(start_coords));
+        });
+        
+        piece.on('dragend', function(e) {
+          end_coords = {
+            x: e.evt.layerX,
+            y: e.evt.layerY,
+          }
+
+          move_piece(position, coords_to_notation(end_coords));
+          console.log(side + ' dropped on ' + coords_to_notation(end_coords));
+        });
+
         game_pieces[position] = piece;
       }
 
@@ -73,7 +93,7 @@
 
         var tween = new Kinetic.Tween({
           node: game_pieces[starting_position],
-          duration: 2,
+          duration: 1,
           x: coords.x,
           y: coords.y
         });
