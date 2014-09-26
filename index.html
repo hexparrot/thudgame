@@ -6,9 +6,9 @@
     <div id="gameboard"></div>
     <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/kineticjs/5.0.6/kinetic.min.js"></script>
     <script defer="defer">
-    	var gameboard_px = 600;
-			var gameboard_squares = 15;
-			var square_size = gameboard_px/gameboard_squares;
+      var gameboard_px = 600;
+      var gameboard_squares = 15;
+      var square_size = gameboard_px/gameboard_squares;
 
       var stage = new Kinetic.Stage({
         container: 'gameboard',
@@ -18,68 +18,75 @@
       var grid = new Kinetic.Layer();
       var piece_layer = new Kinetic.Layer();
 
-      var board_image = new Image();
-      board_image.onload = function() {
-        var board = new Kinetic.Image({
+      stage.add(grid);
+      stage.add(piece_layer);
+
+      var assets = {
+        thudboard: 'tb.gif',
+        dwarf: 'pawn.gif',
+        troll: 'rook.gif'
+      }
+
+      var images = {
+        board: new Image(),
+        troll: new Image(),
+        dwarf: new Image()
+      }
+
+      images['board'].onload = function() {
+        var b = new Kinetic.Image({
           x: 0,
           y: 0,
-          image: board_image,
+          image: images['board'],
           width: gameboard_px,
           height: gameboard_px
         });
-
-        grid.add(board);
-        stage.add(grid);
-        stage.add(piece_layer);
+        grid.add(b);
+        stage.draw();
       };
 
-      var dwarf_image = new Image();
-      var troll_image = new Image();
-
-      board_image.src = 'tb.gif';
-      dwarf_image.src = 'pawn.gif';
+      images['board'].src = 'tb.gif';
+      images['troll'].src = 'rook.gif';
+      images['dwarf'].src = 'pawn.gif';
 
       var game_pieces = {};
 
-      function draw_dwarf(position) {
-      	var dwarf = new Kinetic.Image({
+      function materialize_piece(position, piece) {
+        var piece = new Kinetic.Image({
           x: notation_to_coords(position[0]),
           y: notation_to_coords(position.slice(1)),
-          image: dwarf_image,
+          image: images[piece],
           width: square_size,
           height: square_size
         });
 
-        piece_layer.add(dwarf);
+        piece_layer.add(piece);
         stage.draw();
-        game_pieces[position] = dwarf;
+        game_pieces[position] = piece;
       }
 
-      function move_dwarf(starting_position, ending_position) {
-      	var tween = new Kinetic.Tween({
-	        node: game_pieces[starting_position],
-	        duration: 2,
-	        x: notation_to_coords(ending_position[0]),
-	        y: notation_to_coords(ending_position.slice(1)),
-		    });
-		    game_pieces[ending_position] = game_pieces[starting_position];
-		    delete game_pieces[starting_position];
-		    tween.play();
+      function move_piece(starting_position, ending_position) {
+        var tween = new Kinetic.Tween({
+          node: game_pieces[starting_position],
+          duration: 2,
+          x: notation_to_coords(ending_position[0]),
+          y: notation_to_coords(ending_position.slice(1)),
+        });
+        game_pieces[ending_position] = game_pieces[starting_position];
+        delete game_pieces[starting_position];
+        tween.play();
       }
 
       function notation_to_coords(position) {
-    		TO_NUMBERS = {'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5,
-                 	 		'F': 6, 'G': 7, 'H': 8, 'J': 9, 'K': 10,
-                 	 		'L': 11,'M': 12,'N': 13,'O': 14,'P': 15 }
+        TO_NUMBERS = {'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5,
+                      'F': 6, 'G': 7, 'H': 8, 'J': 9, 'K': 10,
+                      'L': 11,'M': 12,'N': 13,'O': 14,'P': 15 }
 
         if (isNaN(position)) 
-        	return (TO_NUMBERS[position] - 1) * square_size
+          return (TO_NUMBERS[position] - 1) * square_size
         else
-        	return (position - 1) * square_size;
+          return (position - 1) * square_size;
       }
-
-
-
 
     </script>
   </body>
