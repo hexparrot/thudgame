@@ -5,6 +5,7 @@
   <body>
     <div id="gameboard"></div>
     <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/kineticjs/5.0.6/kinetic.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
     <script defer="defer">
       var BOARD_WIDTH = 600;
       var BOARD_SQUARES = 15;
@@ -39,6 +40,7 @@
         })
         layer_gameboard.add(grid);
         stage.draw();
+        init();
       }
 
       assets['thudstone'].onload = function() { 
@@ -69,7 +71,25 @@
 
       CLASSIC_POSITIONS = 'dF1,dG1,dJ1,dK1,dE2,dL2,dD3,dM3,dC4,dN4,dB5,dO5,dA6,dP6,dA7,dP7,dA9,dP9,dA10,dP10,dB11,dO11,dC12,dN12,dD13,dM13,dE14,dL14,dF15,dG15,dJ15,dK15,TG7,TH7,TJ7,TG8,TJ8,TG9,TH9,TJ9,RH8';
 
+      var backend;
       var game_pieces = {};
+
+      function init() {
+        /* socketio init */
+        backend = io('/');
+
+        backend.on('start_new_classic', function(positions) {
+          cleanup_game();
+          setup_game(positions);
+        })
+      }
+
+      function cleanup_game() {
+        for (n in game_pieces)
+          remove_piece(n);
+
+        game_pieces = {};
+      }
 
       function setup_game(positions) {
         pieces = positions.split(',');
@@ -192,9 +212,7 @@
             game_pieces[ending_position] = active_piece;
           }
         }).play();
-
       }
-
 
     </script>
   </body>

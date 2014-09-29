@@ -2,6 +2,7 @@ var express = require('express');
 var app = express();
 var http = require('http').Server(app);
 var io = require('socket.io')(http);
+var thud = require('./thud');
 
 var response_options = {root: __dirname};
 
@@ -19,3 +20,7 @@ process.on('SIGINT', function() {
 http.listen(8124, function(){
   console.log('listening on *:8124');
 });
+
+io.on('connect', function() {
+  io.emit('start_new_classic', thud.STARTING_POSITIONS['CLASSIC']);
+})
