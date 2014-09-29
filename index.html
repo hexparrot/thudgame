@@ -199,7 +199,8 @@
           throw 'invalid move (piece already present at destination)'
 
         active_piece.moveToTop();
-        game_pieces[ending_position] = game_pieces[starting_position];
+        game_pieces[ending_position] = active_piece;
+        delete game_pieces[starting_position];
 
         var tween = new Kinetic.Tween({
           node: active_piece,
