@@ -162,10 +162,21 @@
           piece.opacity(1.0);
           piece.setAbsolutePosition(notation_to_coords(piece.origin));
           stage.draw();
-          console.log(side + ' dropped on ' + coords_to_notation(destination));
+
+          var dest_notation = coords_to_notation(destination)
+          console.log(side + ' dropped on ' + dest_notation);
+
+          var dwarf_capture = '';
+
+          if (side == 'dwarf' && dest_notation in game_pieces)
+            dwarf_capture = 'x' + dest_notation;
 
           console.log(side);
-          notation = (side == 'dwarf' ? 'd' : 'T') + piece.origin + '-' + coords_to_notation(destination);
+          notation = (side == 'dwarf' ? 'd' : 'T') + 
+                     piece.origin + 
+                     '-' + 
+                     coords_to_notation(destination) + 
+                     dwarf_capture;
           console.log(notation);
 
           backend.emit('attempt_move', notation);
