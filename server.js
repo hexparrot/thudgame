@@ -1,12 +1,21 @@
-var http = require('http')
-var fs = require('fs')
-var static = require('node-static')
+var express = require('express');
+var app = express();
+var http = require('http').Server(app);
+var io = require('socket.io')(http);
 
-var fileServer = new static.Server('.',  { cache: false });
+var response_options = {root: __dirname};
 
-require('http').createServer(function (request, response) {
-    request.addListener('end', function () {
-      fileServer.serve(request, response)
-    }).resume();
-}).listen(8124);
+app.get('/', function(req, res){
+  res.sendFile('index.html', response_options);
+});
 
+app.use(express.static(__dirname));
+
+process.on('SIGINT', function() {
+  console.log("Caught interrupt signal; closing webui....");
+  process.exit();
+});
+
+http.listen(8124, function(){
+  console.log('listening on *:8124');
+});
