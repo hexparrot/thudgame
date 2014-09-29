@@ -20,7 +20,7 @@ if __name__ == '__main__':
         p = Ply.parse_string(move)
 
         if not p:
-            if n == 0:
+            if len(newgame.ply_list) == 0:
                 continue
             break
 

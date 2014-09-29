@@ -15,7 +15,6 @@ thud.game = function() {
 
   self.get_next_move = function(callback) {
     var spawn = require('child_process').spawn;
-    
     var child = spawn(__dirname + '/console.py');
 
     child.stdout.on('data', function(data) {

@@ -82,6 +82,15 @@
           cleanup_game();
           setup_game(positions);
         })
+
+        backend.on('valid_move', function(data) {
+          console.log('valid_move', data);
+          var req = data['requested_move'].split('-');
+          move_piece(req[0].slice(1), req[1]);
+
+          var res = data['responded_move'].split('-');
+          move_piece(res[0].slice(1), res[1]);
+        })
       }
 
       function cleanup_game() {
@@ -135,6 +144,12 @@
           piece.setAbsolutePosition(notation_to_coords(piece.origin));
           stage.draw();
           console.log(side + ' dropped on ' + coords_to_notation(destination));
+
+          console.log(side);
+          notation = (side == 'dwarf' ? 'd' : 'T') + piece.origin + '-' + coords_to_notation(destination);
+          console.log(notation);
+
+          backend.emit('attempt_move', notation);
         })
 
         game_pieces[position] = piece;
