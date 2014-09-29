@@ -84,6 +84,7 @@
         })
 
         backend.on('move_accepted', function(data) {
+          console.log(data);
           var ply = ply_breakout(data['requested']);
           apply_ply(ply);
 
@@ -113,6 +114,17 @@
           make_capture(ply.origin, ply.destination, ply.captures);
         else
           move_piece(ply.origin, ply.destination);
+      }
+
+      function notation_creator(side, origin, destination) {
+        var dwarf_capture = '';
+        if (side == 'dwarf' && destination in game_pieces)
+          dwarf_capture = 'x' + destination;
+
+        return (side == 'dwarf' ? 'd' : 'T') + 
+               origin + '-' +
+               destination +
+               dwarf_capture;
       }
 
       function ply_breakout(notation) {
@@ -161,23 +173,12 @@
           piece.setAbsolutePosition(notation_to_coords(piece.origin));
           stage.draw();
 
-          var dest_notation = coords_to_notation(destination)
-          console.log(side + ' dropped on ' + dest_notation);
+          piece.destination = coords_to_notation(destination);
+          console.log(side + ' dropped on ' + piece.destination);
 
-          var dwarf_capture = '';
-
-          if (side == 'dwarf' && dest_notation in game_pieces)
-            dwarf_capture = 'x' + dest_notation;
-
-          console.log(side);
-          notation = (side == 'dwarf' ? 'd' : 'T') + 
-                     piece.origin + 
-                     '-' + 
-                     coords_to_notation(destination) + 
-                     dwarf_capture;
-          console.log(notation);
-
-          backend.emit('attempt_move', notation);
+          backend.emit('attempt_move', notation_creator(side,
+                                       piece.origin,
+                                       piece.destination));
         })
 
         game_pieces[position] = piece;

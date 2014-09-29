@@ -40,16 +40,16 @@ io.on('connect', function(socket) {
         console.log(game_id, 'move rejected:', notation)
         match.moves.pop();
         socket.emit('move_rejected', {
-          requested_move: notation,
-          responded_move: null
+          requested: notation,
+          responded: null
         })
       } else {
         console.log(game_id, 'move accepted:', notation);
         console.log(game_id, 'responds with:', next_move);
         match.moves.push(next_move);
         socket.emit('move_accepted', {
-          requested_move: notation,
-          responded_move: next_move
+          requested: notation,
+          responded: next_move
         })
       }
     });
