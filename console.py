@@ -14,13 +14,13 @@ import re
 
 if __name__ == '__main__':
     ply_list = [l.strip('\n') for l in sys.stdin.readlines()]
-    newgame = Gameboard('classic')    
+    newgame = Gameboard('classic')
 
     for move in ply_list:
         p = Ply.parse_string(move)
 
         if not p:
-            if len(newgame.ply_list) == 0:
+            if n == 0:
                 continue
             break
 
@@ -29,7 +29,7 @@ if __name__ == '__main__':
             newgame.apply_ply(p)
             newgame.ply_list.append(p)
         else:
-            print('invalid')
+            print('invalid_move:{}:{}'.format(len(newgame.ply_list), move))
             exit(1)
 
     ai_thread = threading.Thread(target=AIEngine.calculate_best_move(newgame, \

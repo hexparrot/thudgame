@@ -19,6 +19,7 @@ thud.game = function() {
     var child = spawn(__dirname + '/console.py');
 
     child.stdout.on('data', function(data) {
+      //console.log(data.toString('ascii').trim());
       callback(data.toString('ascii').trim());
     })
 

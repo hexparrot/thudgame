@@ -2,7 +2,7 @@ var thud = require('../thud');
 var async = require('async');
 var test = exports;
 
-NOTATION_VALID_REGEX = /([T|d|R])([A-HJ-P])([0-9]+)-([A-HJ-P])([0-9]+)(.*)/;
+NOTATION_VALID_REGEX = /^([T|d|R])([A-HJ-P])([0-9]+)-([A-HJ-P])([0-9]+)(.*)/;
 
 test.tearDown = function(callback) {
   callback();
@@ -69,10 +69,12 @@ test.get_next_move_midgame = function(test) {
 
 test.invalid_move = function(test) {
   var instance = new thud.game();
-  instance.moves.push('dA6-A15');
+  instance.moves.push('dA6-O6');
+  instance.moves.push('TH9-J10');
+  instance.moves.push('dO6-A15');
 
   instance.get_next_move(function(notation) {
-    test.equal(notation, 'invalid');
+    test.equal(notation, 'invalid_move:2:dO6-A15');
     test.done();
   })
 }
