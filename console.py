@@ -28,6 +28,9 @@ if __name__ == '__main__':
         if valid[0] or valid[1]:
             newgame.apply_ply(p)
             newgame.ply_list.append(p)
+        else:
+            print('invalid')
+            exit(1)
 
     ai_thread = threading.Thread(target=AIEngine.calculate_best_move(newgame, \
                                                                      newgame.turn_to_act(), \
@@ -35,4 +38,5 @@ if __name__ == '__main__':
     ai_thread.start()
     ai_thread.join()
     print(ai.decision)
+    exit(0)
 

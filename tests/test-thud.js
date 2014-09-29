@@ -66,3 +66,13 @@ test.get_next_move_midgame = function(test) {
     test.done();
   })
 }
+
+test.invalid_move = function(test) {
+  var instance = new thud.game();
+  instance.moves.push('dA6-A15');
+
+  instance.get_next_move(function(notation) {
+    test.equal(notation, 'invalid');
+    test.done();
+  })
+}
