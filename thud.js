@@ -17,13 +17,12 @@ thud.game = function() {
     var spawn = require('child_process').spawn;
     
     var child = spawn(__dirname + '/console.py');
-    //child.stdout.pipe(process.stdout);
 
     child.stdout.on('data', function(data) {
       callback(data.toString('ascii'));
     })
 
-    child.stdin.write('dA6-O6');
+    child.stdin.write(self.moves.join('\n'));
     child.stdin.end();
   }
 }
