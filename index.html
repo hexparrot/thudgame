@@ -78,19 +78,17 @@
         /* socketio init */
         backend = io('/');
 
-        backend.on('start_new_classic', function(positions) {
+        backend.on('start_classic_game', function(positions) {
           cleanup_game();
           setup_game(positions);
         })
 
-        backend.on('valid_move', function(data) {
-          console.log('valid_move', data);
-          
-          var ply = ply_breakout(data['requested_move']);
+        backend.on('move_accepted', function(data) {
+          var ply = ply_breakout(data['requested']);
           apply_ply(ply);
 
           setTimeout(function() {
-            ply = ply_breakout(data['responded_move']);
+            ply = ply_breakout(data['responded']);
             apply_ply(ply);
           }, 2000)
         })
