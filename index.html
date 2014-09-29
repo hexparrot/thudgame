@@ -85,11 +85,14 @@
 
         backend.on('valid_move', function(data) {
           console.log('valid_move', data);
-          var req = data['requested_move'].split('-');
-          move_piece(req[0].slice(1), req[1]);
+          
+          var ply = ply_breakout(data['requested_move']);
+          apply_ply(ply);
 
-          var res = data['responded_move'].split('-');
-          move_piece(res[0].slice(1), res[1]);
+          setTimeout(function() {
+            ply = ply_breakout(data['responded_move']);
+            apply_ply(ply);
+          }, 2000)
         })
       }
 
@@ -105,6 +108,13 @@
 
         for (var p in pieces)
           materialize_piece(pieces[p].slice(1), PIECES[pieces[p][0].toLowerCase()]);
+      }
+
+      function apply_ply(ply) {
+        if (ply.captures.length) 
+          make_capture(ply.origin, ply.destination, ply.captures);
+        else
+          move_piece(ply.origin, ply.destination);
       }
 
       function ply_breakout(notation) {
