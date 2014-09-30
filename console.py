@@ -47,6 +47,8 @@ if __name__ == '__main__':
             print(ai.decision)
         elif sys.argv[1] == 'validate':
             print('True')
+        elif sys.argv[1] == 'turn':
+            print(newgame.turn_to_act())
     finally:
         exit(0)
 

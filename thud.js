@@ -32,6 +32,13 @@ thud.game = function(options) {
     })
   }
 
+  self.whose_turn = function() {
+    if (self.moves.length % 2 == 0)
+      return 'dwarf'
+    else
+      return 'troll'
+  }
+
   self.query = function(type, callback) {
     if (['validate', 'next_move'].indexOf(type) < 0)
       throw 'query type not permitted.'

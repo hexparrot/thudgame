@@ -40,7 +40,15 @@ test.push = function(test) {
   ], function(err, results) {
     test.done();
   })
+}
 
+test.whose_turn = function(test) {
+  var instance = new thud.game();
+
+  test.equal(instance.whose_turn(), 'dwarf');
+  instance.moves.push('dA6-O6');
+  test.equal(instance.whose_turn(), 'troll');
+  test.done();
 }
 
 test.get_next_move = function(test) {
