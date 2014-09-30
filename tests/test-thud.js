@@ -51,6 +51,25 @@ test.whose_turn = function(test) {
   test.done();
 }
 
+test.get_max_caps = function(test) {
+  var instance = new thud.game();
+
+  instance.moves.push('dL2-K3')
+  instance.moves.push('TH7-J6')
+  instance.moves.push('dJ1-J2')
+  instance.moves.push('TH9-J10')
+  instance.moves.push('dL14-K14')
+  instance.moves.push('TG9-H9')
+  instance.moves.push('dG1-H2')
+  instance.moves.push('TJ10-J14')
+
+  instance.query('captures', function(full_capstring) {
+    test.equal(full_capstring, 'TJ10-J14xJ15xK15xK14');
+    test.done();
+  })
+
+}
+
 test.get_next_move = function(test) {
   var instance = new thud.game();
 

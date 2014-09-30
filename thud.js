@@ -40,7 +40,7 @@ thud.game = function(options) {
   }
 
   self.query = function(type, callback) {
-    if (['validate', 'next_move'].indexOf(type) < 0)
+    if (['validate', 'next_move', 'captures'].indexOf(type) < 0)
       throw 'query type not permitted.'
     var exec = require('child_process').exec;
     var child = exec(__dirname + '/console.py ' + type);

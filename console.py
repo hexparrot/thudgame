@@ -16,6 +16,9 @@ if __name__ == '__main__':
     ply_list = [l.strip('\n') for l in sys.stdin.readlines()]
     newgame = Gameboard('classic')
 
+    if sys.argv[1] == 'captures':
+        last_move = ply_list.pop()
+
     try:
         for move in ply_list:
             p = Ply.parse_string(move)
@@ -49,6 +52,16 @@ if __name__ == '__main__':
             print('True')
         elif sys.argv[1] == 'turn':
             print(newgame.turn_to_act())
+        elif sys.argv[1] == 'captures':
+            candidates = sorted([str(x) for x in list(newgame.find_caps(newgame.turn_to_act()))], 
+                                key=len, 
+                                reverse=True)
+            for p in candidates:
+                if last_move in p:
+                    print(str(p))
+                    break
+            else:
+                print()
     finally:
         exit(0)
 

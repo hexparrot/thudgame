@@ -64,11 +64,31 @@ server.backend = function(socket_emitter) {
       
       instance.push(data.move, function(is_valid) {
         if (is_valid) {
-          console.log('Game:', game_id, 'accepted move', data.move, 'from', ip);
-          socket.emit('move_accepted', {
-            game: game_id,
-            requested: data.move
-          })
+          console.log(data.move)
+          if (data.move[0] == 'T') {
+            console.log('t')
+            instance.query('captures', function(full_capstring) {
+              if (full_capstring.length > data.move.length) {
+                instance.moves.pop();
+                instance.moves.push(full_capstring);
+                data.move = full_capstring;
+              }
+              
+              console.log('Game:', game_id, 'accepted move', data.move, 'from', ip);
+              socket.emit('move_accepted', {
+                game: game_id,
+                requested: data.move
+              })
+            })
+          } else {
+            console.log('d')
+            console.log('Game:', game_id, 'accepted move', data.move, 'from', ip);
+            socket.emit('move_accepted', {
+              game: game_id,
+              requested: data.move
+            })
+          }
+              
         } else {
           console.log('Game:', game_id, 'rejected move', data.move, 'from', ip);
           socket.emit('move_rejected', {
