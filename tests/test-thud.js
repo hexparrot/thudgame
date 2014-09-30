@@ -30,7 +30,7 @@ test.get_next_move = function(test) {
   var instance = new thud.game();
 
   instance.moves.push('dA6-O6');
-  instance.get_next_move(function(notation) {
+  instance.query('next_move', function(notation) {
     test.equal(notation[0], 'T');
     test.ok(notation.match(NOTATION_VALID_REGEX));
     test.done();
@@ -48,14 +48,14 @@ test.get_next_move_midgame = function(test) {
 
   async.series([
     function(callback) {
-      instance.get_next_move(function(notation) {
+      instance.query('next_move', function(notation) {
         test.equal(notation[0], 'T');
         instance.moves.push(notation);
         callback(null);
       })
     },
     function(callback) {
-      instance.get_next_move(function(notation) {
+      instance.query('next_move', function(notation) {
         test.equal(notation[0], 'd');
         instance.moves.push(notation);
         callback(null);
@@ -73,8 +73,8 @@ test.invalid_move = function(test) {
   instance.moves.push('TH9-J10');
   instance.moves.push('dO6-A15');
 
-  instance.get_next_move(function(notation) {
-    test.equal(notation, 'invalid_move:2:dO6-A15');
+  instance.query('validate', function(notation) {
+    test.equal(notation, 'False');
     test.done();
   })
 }
