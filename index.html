@@ -72,27 +72,39 @@
       CLASSIC_POSITIONS = 'dF1,dG1,dJ1,dK1,dE2,dL2,dD3,dM3,dC4,dN4,dB5,dO5,dA6,dP6,dA7,dP7,dA9,dP9,dA10,dP10,dB11,dO11,dC12,dN12,dD13,dM13,dE14,dL14,dF15,dG15,dJ15,dK15,TG7,TH7,TJ7,TG8,TJ8,TG9,TH9,TJ9,RH8';
 
       var backend;
+      var game_id;
       var game_pieces = {};
 
       function init() {
         /* socketio init */
-        backend = io('/');
+        backend = io();
 
-        backend.on('start_classic_game', function(positions) {
+        backend.on('new_game_created', function(data) {
           cleanup_game();
-          setup_game(positions);
+          setup_game(data.positions);
+          game_id = data.game;
+          console.log('joining game ', game_id);
         })
 
         backend.on('move_accepted', function(data) {
           console.log(data);
           var ply = ply_breakout(data['requested']);
           apply_ply(ply);
-
-          setTimeout(function() {
-            ply = ply_breakout(data['responded']);
-            apply_ply(ply);
-          }, 2000)
         })
+
+        backend.on('cpu_response', function(data) {
+          console.log(data);
+          setTimeout(function() {
+            var ply = ply_breakout(data['responded']);
+            apply_ply(ply);
+          }, 1500)
+        })
+
+        backend.on('move_rejected', function(data) {
+          console.log('Your attempted move', data['requested'], 'is illegal.');
+        })
+
+        backend.emit('create_game');
       }
 
       function cleanup_game() {
@@ -176,9 +188,12 @@
           piece.destination = coords_to_notation(destination);
           console.log(side + ' dropped on ' + piece.destination);
 
-          backend.emit('attempt_move', notation_creator(side,
-                                       piece.origin,
-                                       piece.destination));
+          backend.emit('attempt_move', {
+                        game: game_id,
+                        move: notation_creator(side,
+                                               piece.origin,
+                                               piece.destination)
+                      })
         })
 
         game_pieces[position] = piece;

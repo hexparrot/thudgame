@@ -13,6 +13,19 @@ thud.game = function() {
     callback(thud.STARTING_POSITIONS['CLASSIC']);
   }
 
+  self.push = function(notation, callback) {
+    self.moves.push(notation);
+
+    self.query('validate', function(is_valid) {
+      if (is_valid)
+        callback(true);
+      else {
+        self.moves.pop();
+        callback(false);
+      }
+    })
+  }
+
   self.query = function(type, callback) {
     if (['validate', 'next_move'].indexOf(type) < 0)
       throw 'query type not permitted.'
