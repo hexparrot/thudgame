@@ -35,8 +35,8 @@ io.on('connect', function(socket) {
     console.log(game_id, 'requesting move:', notation);
     match.moves.push(notation);
 
-    match.get_next_move(function(next_move) {
-      if (next_move.indexOf('invalid_move') >= 0) {
+    match.query('validate', function(is_valid) {
+      if (!is_valid) {
         console.log(game_id, 'move rejected:', notation)
         match.moves.pop();
         socket.emit('move_rejected', {
@@ -44,15 +44,18 @@ io.on('connect', function(socket) {
           responded: null
         })
       } else {
-        console.log(game_id, 'move accepted:', notation);
-        console.log(game_id, 'responds with:', next_move);
-        match.moves.push(next_move);
-        socket.emit('move_accepted', {
-          requested: notation,
-          responded: next_move
+        match.query('next_move', function(next_move) {
+          console.log(game_id, 'move accepted:', notation);
+          console.log(game_id, 'responds with:', next_move);
+          match.moves.push(next_move);
+          socket.emit('move_accepted', {
+            requested: notation,
+            responded: next_move
+          })   
         })
+  
       }
-    });
+    })
   })
 })
 

@@ -13,9 +13,11 @@ thud.game = function() {
     callback(thud.STARTING_POSITIONS['CLASSIC']);
   }
 
-  self.get_next_move = function(callback) {
-    var spawn = require('child_process').spawn;
-    var child = spawn(__dirname + '/console.py');
+  self.query = function(type, callback) {
+    if (['validate', 'next_move'].indexOf(type) < 0)
+      throw 'query type not permitted.'
+    var exec = require('child_process').exec;
+    var child = exec(__dirname + '/console.py ' + type);
 
     child.stdout.on('data', function(data) {
       //console.log(data.toString('ascii').trim());

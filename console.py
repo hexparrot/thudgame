@@ -16,27 +16,37 @@ if __name__ == '__main__':
     ply_list = [l.strip('\n') for l in sys.stdin.readlines()]
     newgame = Gameboard('classic')
 
-    for move in ply_list:
-        p = Ply.parse_string(move)
+    try:
+        for move in ply_list:
+            p = Ply.parse_string(move)
 
-        if not p:
-            if len(newgame.ply_list) == 0:
-                continue
-            break
+            if not p:
+                if len(newgame.ply_list) == 0:
+                    continue
+                break
 
-        valid = newgame.validate_move(p.origin, p.dest)
-        if valid[0] or valid[1]:
-            newgame.apply_ply(p)
-            newgame.ply_list.append(p)
-        else:
-            print('invalid_move:{}:{}'.format(len(newgame.ply_list), move))
-            exit(1)
+            valid = newgame.validate_move(p.origin, p.dest)
+            if valid[0] or valid[1]:
+                newgame.apply_ply(p)
+                newgame.ply_list.append(p)
+            else:
+                raise RuntimeError(len(newgame.ply_list), move)
 
-    ai_thread = threading.Thread(target=AIEngine.calculate_best_move(newgame, \
-                                                                     newgame.turn_to_act(), \
-                                                                     0))
-    ai_thread.start()
-    ai_thread.join()
-    print(ai.decision)
-    exit(0)
+    except RuntimeError as e:
+        if sys.argv[1] == 'next_move':
+            print('{}:{}'.format(e[0], e[1]))
+        elif sys.argv[1] == 'validate':
+            print('False')
+    else:
+        if sys.argv[1] == 'next_move':
+            ai_thread = threading.Thread(target=AIEngine.calculate_best_move(newgame, \
+                                                                             newgame.turn_to_act(), \
+                                                                             0))
+            ai_thread.start()
+            ai_thread.join()
+            print(ai.decision)
+        elif sys.argv[1] == 'validate':
+            print('True')
+    finally:
+        exit(0)
 
