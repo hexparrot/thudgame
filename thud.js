@@ -17,12 +17,12 @@ thud.game = function() {
     self.moves.push(notation);
 
     self.query('validate', function(is_valid) {
-      if (is_valid)
-        callback(true);
-      else {
+      is_valid = JSON.parse(is_valid.toLowerCase());
+      
+      if (!is_valid)
         self.moves.pop();
-        callback(false);
-      }
+
+      callback(is_valid);
     })
   }
 
@@ -33,7 +33,6 @@ thud.game = function() {
     var child = exec(__dirname + '/console.py ' + type);
 
     child.stdout.on('data', function(data) {
-      //console.log(data.toString('ascii').trim());
       callback(data.toString('ascii').trim());
     })
 

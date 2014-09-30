@@ -17,13 +17,28 @@ test.start_new_game = function(test) {
   })
 };
 
-test.push_notation = function(test) {
-  var instance = new thud.game();
+test.push = function(test) {
+  async.series([
+    function(callback) {
+      var instance = new thud.game();
+      instance.push('dA6-O6', function(is_valid) {
+        test.ok(is_valid);
+        test.equal(instance.moves.length, 1);
+        callback(null);
+      })
+    },
+    function(callback) {
+      var instance = new thud.game();
+      instance.push('dA6-A15', function(is_valid) {
+        test.ok(!is_valid);
+        test.equal(instance.moves.length, 0);
+        callback(null);
+      })
+    }
+  ], function(err, results) {
+    test.done();
+  })
 
-  instance.moves.push('dA6-O6');
-
-  test.equal(instance.moves[0], 'dA6-O6');
-  test.done();
 }
 
 test.get_next_move = function(test) {
