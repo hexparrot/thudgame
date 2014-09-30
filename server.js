@@ -9,9 +9,9 @@ server.backend = function(socket_emitter) {
   self.games = {}
   self.front_end = socket_emitter || new events.EventEmitter();
 
-  self.create_game = function(callback) {
+  self.create_game = function(sides, callback) {
     var game_id = uuid.v1();
-    self.games[game_id] = new thud.game();
+    self.games[game_id] = new thud.game(sides);
     callback(game_id);
   }
 
@@ -19,8 +19,8 @@ server.backend = function(socket_emitter) {
     var ip = socket['client']['conn']['remoteAddress'];
     console.log('Starting new game with client:', ip);
 
-    socket.on('create_game', function() {
-      self.create_game(function(game_id) {
+    socket.on('create_game', function(sides) {
+      self.create_game(sides, function(game_id) {
         socket.emit('new_game_created', {
           game: game_id,
           positions: thud.STARTING_POSITIONS['CLASSIC']

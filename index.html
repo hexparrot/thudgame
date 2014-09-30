@@ -103,8 +103,25 @@
         backend.on('move_rejected', function(data) {
           console.log('Your attempted move', data['requested'], 'is illegal.');
         })
+      }
 
-        backend.emit('create_game');
+      function play_vs_cpu_as(side) {
+        switch(side) {
+          case 'dwarf':
+            backend.emit('create_game', {
+              dwarf: 'human',
+              troll: 'cpu'
+            });
+            break;
+          case 'troll':
+            backend.emit('create_game', {
+              dwarf: 'cpu',
+              troll: 'human'
+            });
+            break;
+          default:
+            break;
+        }
       }
 
       function cleanup_game() {

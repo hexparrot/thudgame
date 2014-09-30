@@ -9,10 +9,12 @@ test.tearDown = function(callback) {
 }
 
 test.start_new_game = function(test) {
-  var instance = new thud.game();
+  var instance = new thud.game({troll: 'cpu'});
 
   instance.positions(function(positions) {
   	test.equal(positions, thud.STARTING_POSITIONS['CLASSIC']);
+    test.equal(instance.controller['dwarf'], 'human');
+    test.equal(instance.controller['troll'], 'cpu');
     test.done();
   })
 };
