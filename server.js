@@ -15,6 +15,19 @@ server.backend = function(socket_emitter) {
     callback(game_id);
   }
 
+  self.cpu_turn = function(game_id, callback) {
+    var instance = self.games[game_id];
+
+    if (instance.controller[instance.whose_turn()] == 'cpu') {
+      instance.query('next_move', function(next_move) {
+        instance.moves.push(next_move);
+        callback(next_move);
+      })
+    } else {
+      callback(null);
+    }
+  }
+
   self.front_end.on('connection', function(socket) {
     var ip = socket['client']['conn']['remoteAddress'];
     console.log('Starting new game with client:', ip);
@@ -25,6 +38,23 @@ server.backend = function(socket_emitter) {
           game: game_id,
           positions: thud.STARTING_POSITIONS['CLASSIC']
         })
+      })
+    })
+
+    socket.on('wait_for_cpu', function(data) {
+      var game_id = data.game;
+      var instance = self.games[game_id];
+
+      self.cpu_turn(game_id, function(next_move) {
+        if (next_move) {
+          console.log('Game:', game_id, 'responded with', next_move, 'to', ip);
+          socket.emit('cpu_response', {
+            game: game_id,
+            responded: next_move
+          })
+        } else {
+          //do nothing
+        }
       })
     })
 
@@ -39,16 +69,6 @@ server.backend = function(socket_emitter) {
             game: game_id,
             requested: data.move
           })
-
-          instance.query('next_move', function(next_move) {
-            console.log('Game:', game_id, 'responds with', next_move, 'to', ip);
-            instance.moves.push(next_move);
-            socket.emit('cpu_response', {
-              game: game_id,
-              responded: next_move
-            })
-          })
-
         } else {
           console.log('Game:', game_id, 'rejected move', data.move, 'from', ip);
           socket.emit('move_rejected', {

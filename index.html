@@ -84,12 +84,20 @@
           setup_game(data.positions);
           game_id = data.game;
           console.log('joining game ', game_id);
+
+          backend.emit('wait_for_cpu', {
+            game: data.game
+          })
         })
 
         backend.on('move_accepted', function(data) {
           console.log(data);
           var ply = ply_breakout(data['requested']);
           apply_ply(ply);
+
+          backend.emit('wait_for_cpu', {
+            game: data.game
+          })
         })
 
         backend.on('cpu_response', function(data) {
