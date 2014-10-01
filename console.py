@@ -7,10 +7,11 @@ __license__ = "MIT License"
 __version__ = "1.8.0"
 __email__ = "wdchromium@gmail.com"
 
-from thud import *
-from thudclasses import *
 import sys
 import re
+from thud import *
+from thudclasses import *
+from itertools import cycle
 
 if __name__ == '__main__':
     ply_list = [l.strip('\n') for l in sys.stdin.readlines()]
@@ -20,8 +21,11 @@ if __name__ == '__main__':
         last_move = ply_list.pop()
 
     try:
+        turn = itertools.cycle(['dwarf', 'troll'])
         for move in ply_list:
             p = Ply.parse_string(move)
+            if p.token != next(turn):
+                raise RuntimeError(len(newgame.ply_list), move)
 
             if not p:
                 if len(newgame.ply_list) == 0:
