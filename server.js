@@ -47,6 +47,8 @@ server.backend = function(socket_emitter) {
   }
 
   self.query = function(moves, type, callback) {
+    var start = new Date().getTime();
+
     if (['validate', 'next_move', 'captures'].indexOf(type) < 0)
       throw 'query type not permitted.'
     var exec = require('child_process').exec;
@@ -54,6 +56,7 @@ server.backend = function(socket_emitter) {
 
     child.stdout.on('data', function(data) {
       var retval = data.toString('ascii').trim();
+      console.info(type, moves[moves.length-1], new Date().getTime() - start, 'ms');
 
       if (type == 'validate')
         callback(JSON.parse(retval.toLowerCase()));
