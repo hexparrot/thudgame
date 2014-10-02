@@ -80,24 +80,12 @@
         backend = io();
 
         backend.on('new_game_created', function(data) {
-          cleanup_game();
-          setup_game(data.positions);
-          game_id = data.game;
-          console.log('joining game ', game_id);
+          cleanup_board();
+          bulk_add_pieces(data.positions);
+          game_id = data.game_id;
 
-          backend.emit('wait_for_cpu', {
-            game: data.game
-          })
-        })
-
-        backend.on('move_accepted', function(data) {
-          console.log(data);
-          var ply = ply_breakout(data['requested']);
-          apply_ply(ply);
-
-          backend.emit('wait_for_cpu', {
-            game: data.game
-          })
+          console.log('Joining game', game_id);
+          backend.emit('wait_for_cpu', game_id);
         })
 
         backend.on('cpu_response', function(data) {
@@ -108,42 +96,60 @@
           }, 1500)
         })
 
-        backend.on('move_rejected', function(data) {
-          console.log('Your attempted move', data['requested'], 'is illegal.');
+        backend.on('move_accepted', function(data) {
+          console.log(data);
+
+          var ply = ply_breakout(data['requested']);
+          apply_ply(ply);
+
+          backend.emit('wait_for_cpu', game_id);
         })
+
+        play_vs_cpu_as('dwarf');
+
+        /*backend.on('move_rejected', function(data) {
+          console.log('Your attempted move', data['requested'], 'is illegal.');
+        })*/
       }
 
-      function play_vs_cpu_as(side) {
-        switch(side) {
-          case 'dwarf':
-            backend.emit('create_game', {
-              dwarf: 'human',
-              troll: 'cpu'
-            });
-            break;
-          case 'troll':
-            backend.emit('create_game', {
-              dwarf: 'cpu',
-              troll: 'human'
-            });
-            break;
-          default:
-            break;
-        }
+      function bulk_add_pieces(positions) {
+        pieces = positions.split(',');
+
+        for (var p in pieces)
+          materialize_piece(pieces[p].slice(1), PIECES[pieces[p][0].toLowerCase()]);
       }
 
-      function cleanup_game() {
+      function cleanup_board() {
         for (n in game_pieces)
           remove_piece(n);
 
         game_pieces = {};
       }
 
-      function setup_game(positions) {
-        pieces = positions.split(',');
+      function remove_piece(position) {
+        position = position.toUpperCase();
 
-        for (var p in pieces)
-          materialize_piece(pieces[p].slice(1), PIECES[pieces[p][0].toLowerCase()]);
+        if (position in game_pieces) {
+          game_pieces[position].remove();
+          delete game_pieces[position];
+          stage.draw();
+        } else {
+          console.error('attempted to remove absent piece at ' + position);
+        }
+      }
+
+      function play_vs_cpu_as(side) {
+        if (side == 'dwarf') {
+          backend.emit('create_game', {
+            dwarf_controller: 'human',
+            troll_controller: 'cpu'
+          })
+        } else if (side == 'troll') {
+          backend.emit('create_game', {
+            dwarf_controller: 'cpu',
+            troll_controller: 'human'
+          })
+        }
       }
 
       function apply_ply(ply) {
@@ -170,7 +176,7 @@
           destination: notation.split('-')[1].split('x')[0],
           captures: notation.split('x').slice(1),
           side: notation[0]
-        };
+        }
       }
 
       function materialize_piece(position, side) {
@@ -214,7 +220,7 @@
           console.log(side + ' dropped on ' + piece.destination);
 
           backend.emit('attempt_move', {
-                        game: game_id,
+                        game_id: game_id,
                         move: notation_creator(side,
                                                piece.origin,
                                                piece.destination)
@@ -263,17 +269,7 @@
         tween.play();
       }
 
-      function remove_piece(position) {
-        position = position.toUpperCase();
-
-        if (position in game_pieces) {
-          game_pieces[position].remove();
-          delete game_pieces[position];
-          stage.draw();
-        } else {
-          console.error('attempted to remove absent piece at ' + position);
-        }
-      }
+      
 
       function make_capture(starting_position, ending_position, captured_positions) {
         starting_position = starting_position.toUpperCase();
@@ -298,6 +294,7 @@
           }
         }).play();
       }
+      
 
     </script>
   </body>
