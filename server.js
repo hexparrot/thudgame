@@ -72,7 +72,7 @@ server.backend = function(socket_emitter) {
           query: {game_id: game_id},
           update: { $push: {moves: move} }
         }, function(err) {
-          callback(true);
+          callback(!err);
         })
       } else {
         callback(false);
@@ -101,9 +101,7 @@ server.backend = function(socket_emitter) {
             positions: game.starting_positions
           })
         }
-          
       })
-
     })
 
     socket.on('wait_for_cpu', function(game_id) {
@@ -170,43 +168,6 @@ server.backend = function(socket_emitter) {
       }
 
       self.find_game(data.game_id, append_to_moves);
-
-      /*self.find_game(data.game_id, function(game) {
-        self.append_move(data.game_id, data.move, function(success) {
-          if (success) {
-            if (data.move[0] == 'T') {
-              self.query(game.moves, 'captures', function(full_capstring) {
-                if (full_capstring.length > data.move.length) {
-                  self.db.games.findAndModify({
-                    query: {game_id: data.game_id},
-                    update: { $pop: {moves: 1}}
-                  }, function(err, doc, last_error) {
-                    if (!err) {
-                      self.db.games.findAndModify({
-                        query: {game_id: data.game_id},
-                        update: { $push: {moves: data.move} }
-                      })
-                    }
-                  })
-                
-                  console.log('Game:', data.game_id, 'accepted move', data.move, 'from', ip);
-                  socket.emit('move_accepted', {
-                    game_id: data.game_id,
-                    requested: data.move
-                  })
-                }
-              })
-            } else {
-              console.log('Game:', data.game_id, 'accepted move', data.move, 'from', ip);
-              socket.emit('move_accepted', {
-                game_id: data.game_id,
-                requested: data.move
-              })
-            }
-          }
-
-        })
-      })*/
     })
   })
 
