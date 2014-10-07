@@ -280,7 +280,6 @@
         var coords = notation_to_coords(ending_position);
 
         active_piece.moveToTop();
-        delete game_pieces[starting_position];
 
         return new Kinetic.Tween({
           node: active_piece,
@@ -292,6 +291,7 @@
             for (var p in captured_positions) 
               remove_piece(captured_positions[p]);
 
+            delete game_pieces[starting_position];
             game_pieces[ending_position] = active_piece;
           }
         });
