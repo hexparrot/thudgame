@@ -14,7 +14,7 @@ server.backend = function(socket_emitter) {
   self.front_end = socket_emitter || new events.EventEmitter();
 
   self.create_game = function(dwarf_controller, troll_controller, callback) {
-    /* callback returns function(game_id) */
+    // callback returns function(game_id) 
     var game_id = uuid.v1();
     self.db.games.save({
       game_id: game_id,
@@ -33,7 +33,7 @@ server.backend = function(socket_emitter) {
   }
 
   self.find_game = function(game_id, callback) {
-    /* callback returns function(game) */
+    // callback returns function(game) 
     self.db.games.findOne({game_id: game_id}, function(err, game) {
       if (!err)
         callback(game);
@@ -68,23 +68,24 @@ server.backend = function(socket_emitter) {
     child.stdin.end();
   }
 
-  self.append_move = function(game_id, move, callback) {
-    function handle_validity(is_valid) {
-      if (is_valid) {
-        self.db.games.findAndModify({
-          query: {game_id: game_id},
-          update: { $push: {moves: move} }
-        }, function(err) {
-          callback(!err);
-        })
-      } else {
-        callback(false);
-      }
-    }
+  self.validate_move = function(data, callback) {
+    self.find_game(data.game_id, function(game) {
+      var recorded_moves = game.moves;
+      recorded_moves.push(data.move);
 
-    self.find_game(game_id, function(game) {
-      game.moves.push(move);
-      self.query(game.moves, 'validate', handle_validity);
+      self.query(recorded_moves, 'validate', function(is_valid) {
+        if (!is_valid) {
+          callback(null);
+        } else {
+          self.query(recorded_moves, 'captures', function(full_capstring) {
+            if (full_capstring.indexOf('x') >= 0) {
+              recorded_moves.pop();
+              recorded_moves.push(full_capstring)
+            }
+            callback(full_capstring || data.move);
+          })
+        }
+      })
     })
   }
 
@@ -107,70 +108,40 @@ server.backend = function(socket_emitter) {
       })
     })
 
+    socket.on('attempt_move', function(data) {
+      self.validate_move(data, function(validated_move) {
+        if (validated_move) {
+          self.db.games.findAndModify({
+            query: {game_id: data.game_id},
+            update: { $push: {moves: validated_move}}
+          })
+          console.log('Game:', data.game_id, 'accepted move', validated_move, 'from', ip);
+          socket.emit('move_accepted', {
+            game_id: data.game_id,
+            requested: validated_move
+          })
+        } else {
+          console.log('Game:', data.game_id, 'rejected move', data.move, 'from', ip);
+        }
+      })
+    });
+
     socket.on('wait_for_cpu', function(game_id) {
-      function append_cpu_move(game) {
-        self.query(game.moves, 'next_move', function(next_move) {
-          self.append_move(game.game_id, next_move, function() {
+      self.find_game(game_id, function(game) {
+        if (game[self.turn_to_act(game.moves) + '_controller'] == 'cpu') {
+          self.query(game.moves, 'next_move', function(next_move) {
+            self.db.games.findAndModify({
+              query: {game_id: game_id},
+              update: { $push: {moves: next_move}}
+            })
             console.log('Game:', game_id, 'responded with', next_move, 'to', ip);
             socket.emit('cpu_response', {
               game: game_id,
               responded: next_move
             })
           })
-        })
-      }
-      self.find_game(game_id, function(game) {
-        if (self.turn_to_act(game.moves) == 'troll' && 
-            game.troll_controller == 'cpu') {
-          append_cpu_move(game);
         }
       })
-    })
-
-    socket.on('attempt_move', function(data) {
-      function pop_last_move() {
-        self.db.games.findAndModify({
-          query: {game_id: data.game_id},
-          update: { $pop: {moves: 1}}
-        })
-      }
-
-      function append_to_moves(game) {
-        self.append_move(data.game_id, data.move, function(success) {
-          if (success) {
-            switch (data.move[0]) {
-              case 'T':
-                self.query(game.moves, 'captures', function(full_capstring) {
-                  if (full_capstring.length > data.move.length) 
-                    pop_last_move();
-                  else
-                    full_capstring = data.move;
-
-                  console.log('Game:', data.game_id, 'accepted move', full_capstring, 'from', ip);
-                  socket.emit('move_accepted', {
-                    game_id: data.game_id,
-                    requested: full_capstring
-                  })
-                })
-                break;
-              case 'd':
-                console.log('Game:', data.game_id, 'accepted move', data.move, 'from', ip);
-                socket.emit('move_accepted', {
-                  game_id: data.game_id,
-                  requested: data.move
-                })
-                break;
-              default:
-                console.error('invalid move token:', data.move[0]);
-            }
-          } else {
-            console.log('Game:', data.game_id, 'rejected move', data.move, 'from', ip);
-          }
-        })
-
-      }
-
-      self.find_game(data.game_id, append_to_moves);
     })
   })
 
