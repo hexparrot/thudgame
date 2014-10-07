@@ -110,6 +110,7 @@ server.backend = function(socket_emitter) {
 
     socket.on('attempt_move', function(data) {
       self.validate_move(data, function(validated_move) {
+        console.log(data, validated_move)
         if (validated_move) {
           self.db.games.findAndModify({
             query: {game_id: data.game_id},
@@ -136,7 +137,7 @@ server.backend = function(socket_emitter) {
             })
             console.log('Game:', game_id, 'responded with', next_move, 'to', ip);
             socket.emit('cpu_response', {
-              game: game_id,
+              game_id: game_id,
               responded: next_move
             })
           })
