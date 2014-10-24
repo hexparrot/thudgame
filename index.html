@@ -24,6 +24,7 @@
       stage.add(layer_pieces);
 
       var tween_delay = 1.5;
+      var tween_fastmove = .2;
 
       var assets = {
         board: new Image(),
@@ -90,6 +91,15 @@
           backend.emit('wait_for_cpu', game_id);
         })
 
+        backend.on('replay_game', function(data) {
+          game_id = data.game_id;
+          console.log('Replaying game', game_id, data);
+
+          play_out_game(data.positions, data.moves, function() {
+            backend.emit('wait_for_cpu', game_id);
+          });
+        })
+
         backend.on('cpu_response', function(data) {
           if (data.game_id == game_id) {
             console.log(data);
@@ -117,6 +127,31 @@
 
         for (var p in pieces)
           materialize_piece(pieces[p].slice(1), PIECES[pieces[p][0].toLowerCase()]);
+      }
+
+      function replay_game() {
+        backend.emit('replay_game', game_id)
+      }
+
+      function play_out_game(positions, moves) {
+        cleanup_board();
+        bulk_add_pieces(positions);
+
+        var original_delay = tween_delay;
+        tween_delay = tween_fastmove;
+
+        var copy = moves.slice();
+
+        var autoplay = setInterval(function() {
+          move = copy.shift();
+
+          if (move) {
+            apply_ply(ply_breakout(move));
+          } else {
+            tween_delay = original_delay;
+            clearInterval(autoplay);
+          }
+        }, tween_delay * 1000)
       }
 
       function cleanup_board() {
@@ -291,8 +326,8 @@
             for (var p in captured_positions) 
               remove_piece(captured_positions[p]);
 
-            delete game_pieces[starting_position];
             game_pieces[ending_position] = active_piece;
+            delete game_pieces[starting_position];
           }
         });
       }

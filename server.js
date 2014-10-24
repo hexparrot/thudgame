@@ -143,6 +143,18 @@ server.backend = function(socket_emitter) {
         }
       })
     })
+
+    socket.on('replay_game', function(game_id) {
+      console.log('Received game replay from', ip, 'for game', game_id);
+      self.find_game(game_id, function(game) {
+        console.log('Found game:', game_id, '- Sending game replay.');
+        socket.emit('replay_game', {
+          game_id: game_id,
+          positions: game.starting_positions,
+          moves: game.moves
+        })
+      })
+    })
   })
 
   return self;
