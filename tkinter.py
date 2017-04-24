@@ -11,6 +11,7 @@ from thud import *
 
 import copy
 import tkinter
+import tkinter.filedialog
 import math
 import re
 import itertools
