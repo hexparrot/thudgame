@@ -65,7 +65,7 @@ class DesktopGUI(tkinter.Frame):
         self.cpu_troll = tkinter.BooleanVar()
         self.cpu_dwarf = tkinter.BooleanVar()
         self.alt_iconset = tkinter.BooleanVar()
-        self.lookahead_count = 3
+        self.lookahead_count = 30
 
         self.draw_ui(master)
         self.user_notice.set("")
