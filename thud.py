@@ -973,7 +973,11 @@ class AIEngine(threading.Thread):
                     if debug_dwarf: print('future of move', best_move.score, best_move)
 
                 if best_block:
-                    ai.decision = max(best_setup, best_move, best_block)
+                    try:
+                        ai.decision = max(best_setup, best_move, best_block)
+                    except AttributeError:
+                        print('best_move == None')
+                        ai.decision = max(best_setup, best_block)
                 elif best_setup and dest_more_dense(imap, best_setup):
                     ai.decision = max(best_setup, best_move)
                 elif best_move:
