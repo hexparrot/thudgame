@@ -23,6 +23,7 @@ if __name__ == '__main__':
     try:
         turn = itertools.cycle(['dwarf', 'troll'])
         for move in ply_list:
+            if ',' in move: continue
             p = Ply.parse_string(move)
             if p.token != next(turn):
                 raise RuntimeError(len(newgame.ply_list), move)
