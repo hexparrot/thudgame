@@ -228,7 +228,7 @@ class Ply:
                     'T': 'troll',
                     'R': 'thudstone' }
 
-        REGEX_NOTATION_PLY = r"([T|d|R])([A-HJ-P])([0-9]+)-([A-HJ-P])([0-9]+)(.*)"
+        REGEX_NOTATION_PLY = r"([T|d|R]) ?([A-HJ-P])([0-9]+)-([A-HJ-P])([0-9]+)(.*)"
         compiled_notation = re.compile(REGEX_NOTATION_PLY)
         m = compiled_notation.search(str(ply_notation))
         if m:
