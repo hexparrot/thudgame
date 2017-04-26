@@ -731,7 +731,18 @@ class AIEngine(threading.Thread):
         for p in ply_list:
             dest_positions.append(p.dest)
 
-        return unique(dest_positions)      
+        return unique(dest_positions)
+
+    def find_line_blocks(self):
+        """
+        Checks if a dwarf can be placed at the front of a troll line
+        to effectively stop a shove.
+        """
+        blocks = [i.dest for i in self.board.find_setups('troll')]
+        available_blockers = list(self.filter_dwarfs_can_reach(blocks))
+        best_blockers = self.filter_farthest_dwarfs(available_blockers, 0.1)
+
+        return best_blockers
 
     def filter_threatened_pieces(self, friendly_token):
         """Counts the number of pieces that can be captured next turn hypothetically."""
@@ -916,13 +927,14 @@ class AIEngine(threading.Thread):
             troll_cd = b.filter_capture_destinations(list(b.board.find_caps('troll')))
             
             b.threats = list(b.board.find_caps(token))
-            b.setups = list(b.board.find_setups(token, Bitboard(troll_cd)))
-            b.moves = list(b.board.find_moves(token))
 
             ai.decision = b.filter_best(token, b.threats)
             if debug_dwarf: print('cap', ai.decision.score, ai.decision or 'x')
             
             if not ai.decision:
+                b.setups = list(b.board.find_setups(token, Bitboard(troll_cd)))
+                b.moves = list(b.board.find_moves(token))
+                
                 best_setup = b.filter_best(token, b.filter_farthest_dwarfs(b.setups))
                 if debug_dwarf: print('setup', ai.decision.score, ai.decision or 'x')
 
@@ -939,19 +951,34 @@ class AIEngine(threading.Thread):
                         best_move = b.filter_best(token, candidates)
                         break
 
-                '''if lookahead and best_setup:
+                best_block = b.filter_best(token, list(b.find_line_blocks()))
+
+                if lookahead and best_setup:
                     best_setup.score = AIEngine.predict_future(b.board, \
                                                                best_setup, \
                                                                lookahead, \
                                                                b.board.turn_to_act())
                     if debug_dwarf: print('future of setup', best_setup.score, best_setup)
+                if lookahead and best_block:
+                    best_block.score = AIEngine.predict_future(b.board, \
+                                                              best_block, \
+                                                              lookahead, \
+                                                              b.board.turn_to_act())
+                    if debug_dwarf: print('future of move', best_block.score, best_block)
                 if lookahead and best_move:
                     best_move.score = AIEngine.predict_future(b.board, \
                                                               best_move, \
                                                               lookahead, \
                                                               b.board.turn_to_act())
-                    if debug_dwarf: print('future of move', best_move.score, best_move)'''
-                if best_setup and dest_more_dense(imap, best_setup):
+                    if debug_dwarf: print('future of move', best_move.score, best_move)
+
+                if best_block:
+                    try:
+                        ai.decision = max(best_setup, best_move, best_block)
+                    except AttributeError:
+                        print('best_move == None')
+                        ai.decision = max(best_setup, best_block)
+                elif best_setup and dest_more_dense(imap, best_setup):
                     ai.decision = max(best_setup, best_move)
                 elif best_move:
                     ai.decision = best_move
