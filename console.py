@@ -49,7 +49,7 @@ if __name__ == '__main__':
         if sys.argv[1] == 'next_move':
             ai_thread = threading.Thread(target=AIEngine.calculate_best_move(newgame, \
                                                                              newgame.turn_to_act(), \
-                                                                             0))
+                                                                             30))
             ai_thread.start()
             ai_thread.join()
             print(ai.decision)
