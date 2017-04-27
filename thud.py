@@ -904,8 +904,12 @@ class AIEngine(threading.Thread):
         
         if not len(b.board.dwarfs): raise NoMoveException('dwarf')
         elif not len(b.board.trolls): raise NoMoveException('troll')
-    
+
+        if debug_troll or debug_dwarf: print('')    
         if token == 'troll':
+            if debug_troll:
+                print('TROLL')
+                print('turn: ', len(b.board.ply_list) / 2)
             b.threats = list(b.board.find_caps(token))
             b.setups = list(b.board.find_setups(token))
             b.moves = list(b.board.find_moves(token))
@@ -917,8 +921,8 @@ class AIEngine(threading.Thread):
             else:
                 best_cap = b.filter_best(token, b.threats)
                 best_setup = b.filter_best(token, b.setups)
-                if debug_troll: print('cap', best_cap.score, best_cap or 'x')
-                if debug_troll: print('setup', best_setup.score, best_setup or 'x')
+                if debug_troll: print('best cap', best_cap.score, best_cap or 'x')
+                if debug_troll: print('best setup', best_setup.score, best_setup or 'x')
 
                 if lookahead and best_cap:
                     best_cap.score = AIEngine.predict_future(b.board, \
@@ -936,21 +940,31 @@ class AIEngine(threading.Thread):
                 ai.decision = max(best_cap, best_setup)
                 if not ai.decision:
                     ai.decision = b.filter_best(token, b.nonoptimal_troll_moves())
-                    if debug_troll: print('move', ai.decision.score, ai.decision or 'x')
+                    if debug_troll: print('best move', ai.decision.score, ai.decision or 'x')
+
+            if debug_troll:
+                print('# threats: ', len(b.threats))
+                print('# setups: ', len(b.setups))
+                print('# moves: ', len(b.moves))
+                print('  T: ', len(b.board.trolls) * 4, 'd: ', len(b.board.dwarfs))
         elif token == 'dwarf':
+            if debug_dwarf:
+                print('DWARF')
+                print('turn: ', len(b.board.ply_list) / 2)
+
             troll_cd = b.filter_capture_destinations(list(b.board.find_caps('troll')))
             
             b.threats = list(b.board.find_caps(token))
 
             ai.decision = b.filter_best(token, b.threats)
-            if debug_dwarf: print('cap', ai.decision.score, ai.decision or 'x')
+            if debug_dwarf: print('best cap', ai.decision.score, ai.decision or 'x')
             
             if not ai.decision:
                 b.setups = list(b.board.find_setups(token, Bitboard(troll_cd)))
                 b.moves = list(b.board.find_moves(token))
                 
                 best_setup = b.filter_best(token, b.filter_farthest_dwarfs(b.setups))
-                if debug_dwarf: print('setup', ai.decision.score, ai.decision or 'x')
+                if debug_dwarf: print('best setup', ai.decision.score, ai.decision or 'x')
 
                 imap = InfluenceMap(b.board.dwarfs, b.board.trolls)
                 empties_adjacent = []
@@ -998,6 +1012,12 @@ class AIEngine(threading.Thread):
                     ai.decision = best_move
             if not ai.decision:
                 ai.decision = next(b.board.find_moves('dwarf'))
+                
+            if debug_dwarf:
+                print('# threats: ', len(b.threats))
+                print('# setups: ', len(b.setups))
+                print('# moves: ', len(b.moves))
+                print('  T: ', len(b.board.trolls) * 4, 'd: ', len(b.board.dwarfs))
         if not ai.decision:
             raise NoMoveException(token)
 
