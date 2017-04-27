@@ -19,7 +19,7 @@ import logging
 import sys
 
 ai_log = logging.getLogger('ai_logger')
-ai_log.setLevel(logging.DEBUG)
+ai_log.setLevel(logging.INFO)
 handler = logging.StreamHandler()
 handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
 ai_log.addHandler(handler)
@@ -948,8 +948,11 @@ class AIEngine(threading.Thread):
                     ai_log.info('best move %i %s', ai.decision.score, ai.decision or 'x')
 
             ai_log.info('# threats: %i', len(b.threats))
+            ai_log.debug('%s', ', '.join(str(s) for s in b.threats))
             ai_log.info('# setups: %i', len(b.setups))
+            ai_log.debug('%s', ', '.join(str(s) for s in b.setups))
             ai_log.info('# moves: %i', len(b.moves))
+            ai_log.debug('%s', ', '.join(str(s) for s in b.moves))
             ai_log.info('  T: %i d: %i\n', len(b.board.trolls) * 4, len(b.board.dwarfs))
         elif token == 'dwarf':
             ai_log.info('DWARF')
@@ -1017,8 +1020,11 @@ class AIEngine(threading.Thread):
                 ai.decision = next(b.board.find_moves('dwarf'))
                 
             ai_log.info('# threats: %i', len(b.threats))
+            ai_log.debug('%s', ', '.join(str(s) for s in b.threats))
             ai_log.info('# setups: %i', len(b.setups))
+            ai_log.debug('%s', ', '.join(str(s) for s in b.setups))
             ai_log.info('# moves: %i', len(b.moves))
+            ai_log.debug('%s', ', '.join(str(s) for s in b.moves))
             ai_log.info('  T: %i d: %i\n', len(b.board.trolls) * 4, len(b.board.dwarfs))
         if not ai.decision:
             raise NoMoveException(token)
