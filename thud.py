@@ -736,10 +736,24 @@ class AIEngine(threading.Thread):
     def find_line_blocks(self):
         """
         Checks if a dwarf can be placed at the front of a troll line
-        to effectively stop a shove.
+        to effectively stop a shove.  Considers adjacent blocking square
+        as well as 1-off, which helps reduce the chances of a non-line
+        troll from eliminating the dwarf without interrupting the line.
         """
-        blocks = [i.dest for i in self.board.find_setups('troll')]
-        available_blockers = list(self.filter_dwarfs_can_reach(blocks))
+        empties = set()
+
+        for ply in self.board.find_caps('troll'):
+            shove_direction = self.board.get_direction(ply.origin, ply.dest)
+            opposite_direction = self.board.get_direction(ply.dest, ply.origin)
+
+            for i in range(3):
+                if self.board.token_at(ply.origin + (opposite_direction * i)) != 'troll':
+                    break
+            else:
+                empties.add(ply.origin + shove_direction)
+                empties.add(ply.origin + shove_direction + shove_direction)
+
+        available_blockers = list(self.filter_dwarfs_can_reach(empties))
         best_blockers = self.filter_farthest_dwarfs(available_blockers, 0.1)
 
         return best_blockers
