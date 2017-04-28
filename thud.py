@@ -894,6 +894,25 @@ class AIEngine(threading.Thread):
         return b.score(token)
 
     @staticmethod
+    def select_best_future(board, plies, lookahead, token):
+        """
+        Takes a list of plies and determines out the most favorable
+        """
+
+        best_score = -101
+        best_ply = None
+
+        for i, ply in enumerate(plies):
+            score = AIEngine.predict_future(board, \
+                                            ply, \
+                                            lookahead, \
+                                            token)
+            if score > best_score:
+                best_score = score
+                best_ply = ply
+        return best_ply
+
+    @staticmethod
     def calculate_best_move(board, token, lookahead=0):
         """
         Takes a board position and calculates the best move for a token.
@@ -917,60 +936,44 @@ class AIEngine(threading.Thread):
             ai_log.info('turn: %d', len(b.board.ply_list) / 2)
             b.threats = list(b.board.find_caps(token))
             b.setups = list(b.board.find_setups(token))
-            b.moves = list(b.board.find_moves(token))
-            
+
             immediate_threats = b.filter_adjacent_threats(token)
             if immediate_threats:
                 ai.decision = b.filter_best(token, immediate_threats)
                 ai_log.info('save %i %s', ai.decision.score, ai.decision or 'x')
             else:
-                best_cap = b.filter_best(token, b.threats)
-                best_setup = b.filter_best(token, b.setups)
-                ai_log.info('best cap %i %s', best_cap.score, best_cap or 'x')
-                ai_log.info('best setup %i %s', best_setup.score, best_setup or 'x')
-
-                if lookahead and best_cap:
-                    best_cap.score = AIEngine.predict_future(b.board, \
-                                                             best_cap, \
-                                                             lookahead, \
-                                                             b.board.turn_to_act())
-                    ai_log.info('future of cap %i %s', best_cap.score, str(best_cap))
-                if lookahead and best_setup:
-                    best_setup.score = AIEngine.predict_future(b.board, \
-                                                               best_setup, \
-                                                               lookahead, \
-                                                               b.board.turn_to_act())
-                    ai_log.info('future of setup %i %s', best_setup.score, str(best_setup))
-                
-                ai.decision = max(best_cap, best_setup)
-                if not ai.decision:
+                tsb = AIEngine.select_best_future(b.board, itertools.chain(b.threats, b.setups), 0, token)
+ 
+                if tsb:
+                    ai.decision = tsb
+                else:
                     ai.decision = b.filter_best(token, b.nonoptimal_troll_moves())
-                    ai_log.info('best move %i %s', ai.decision.score, ai.decision or 'x')
 
             ai_log.info('# threats: %i', len(b.threats))
             ai_log.debug('%s', ', '.join(str(s) for s in b.threats))
             ai_log.info('# setups: %i', len(b.setups))
             ai_log.debug('%s', ', '.join(str(s) for s in b.setups))
-            ai_log.info('# moves: %i', len(b.moves))
-            ai_log.debug('%s', ', '.join(str(s) for s in b.moves))
             ai_log.info('  T: %i d: %i\n', len(b.board.trolls) * 4, len(b.board.dwarfs))
         elif token == 'dwarf':
             ai_log.info('DWARF')
             ai_log.info('turn: %d', len(b.board.ply_list) / 2)
 
-            troll_cd = b.filter_capture_destinations(list(b.board.find_caps('troll')))
-            
             b.threats = list(b.board.find_caps(token))
 
             ai.decision = b.filter_best(token, b.threats)
             ai_log.info('best cap %i %s', ai.decision.score, ai.decision or 'x')
             
             if not ai.decision:
+                troll_cd = b.filter_capture_destinations(list(b.board.find_caps('troll')))
                 b.setups = list(b.board.find_setups(token, Bitboard(troll_cd)))
                 b.moves = list(b.board.find_moves(token))
-                
+                b.blocks = list(b.find_line_blocks())
                 best_setup = b.filter_best(token, b.filter_farthest_dwarfs(b.setups))
-                ai_log.info('best setup %i %s', ai.decision.score, ai.decision or 'x')
+
+                tsb = AIEngine.select_best_future(b.board, \
+                                                  itertools.chain(b.threats, b.setups, b.blocks), \
+                                                  lookahead, \
+                                                  token)
 
                 imap = InfluenceMap(b.board.dwarfs, b.board.trolls)
                 empties_adjacent = []
@@ -985,46 +988,22 @@ class AIEngine(threading.Thread):
                         best_move = b.filter_best(token, candidates)
                         break
 
-                best_block = b.filter_best(token, list(b.find_line_blocks()))
-
-                if lookahead and best_setup:
-                    best_setup.score = AIEngine.predict_future(b.board, \
-                                                               best_setup, \
-                                                               lookahead, \
-                                                               b.board.turn_to_act())
-                    ai_log.info('future of setup %i %s', best_setup.score, str(best_setup))
-                if lookahead and best_block:
-                    best_block.score = AIEngine.predict_future(b.board, \
-                                                              best_block, \
+                if tsb:
+                    ai.decision = AIEngine.select_best_future(b.board, \
+                                                              [tsb, best_move], \
                                                               lookahead, \
-                                                              b.board.turn_to_act())
-                    ai_log.info('future of block %i %s', best_block.score, str(best_block))
-                if lookahead and best_move:
-                    best_move.score = AIEngine.predict_future(b.board, \
-                                                              best_move, \
-                                                              lookahead, \
-                                                              b.board.turn_to_act())
-                    ai_log.info('future of move %i %s', best_move.score, str(best_move))
-
-                if best_block:
-                    try:
-                        ai.decision = max(best_setup, best_move, best_block)
-                    except AttributeError:
-                        ai_log.info('best_move == None')
-                        ai.decision = max(best_setup, best_block)
-                elif best_setup and dest_more_dense(imap, best_setup):
-                    ai.decision = max(best_setup, best_move)
+                                                              token)
                 elif best_move:
                     ai.decision = best_move
-            if not ai.decision:
-                ai.decision = next(b.board.find_moves('dwarf'))
+                else:
+                    ai.decision = next(b.board.find_moves('dwarf'))
                 
-            ai_log.info('# threats: %i', len(b.threats))
+            ai_log.info('# threats: %i', len(list(b.threats)))
             ai_log.debug('%s', ', '.join(str(s) for s in b.threats))
             ai_log.info('# setups: %i', len(b.setups))
             ai_log.debug('%s', ', '.join(str(s) for s in b.setups))
             ai_log.info('# moves: %i', len(b.moves))
-            ai_log.debug('%s', ', '.join(str(s) for s in b.moves))
+            #ai_log.debug('%s', ', '.join(str(s) for s in b.moves))
             ai_log.info('  T: %i d: %i\n', len(b.board.trolls) * 4, len(b.board.dwarfs))
         if not ai.decision:
             raise NoMoveException(token)
