@@ -47,12 +47,10 @@ if __name__ == '__main__':
             print('False')
     else:
         if sys.argv[1] == 'next_move':
-            ai_thread = threading.Thread(target=AIEngine.calculate_best_move(newgame, \
-                                                                             newgame.turn_to_act(), \
-                                                                             30))
-            ai_thread.start()
-            ai_thread.join()
-            print(ai.decision)
+            result = AIEngine.calculate_best_move(newgame, \
+                                                     newgame.turn_to_act(), \
+                                                     3)
+            print(result)
         elif sys.argv[1] == 'validate':
             print('True')
         elif sys.argv[1] == 'turn':
