@@ -14,7 +14,6 @@ import re
 import itertools
 import random
 import sys
-import threading
 import logging
 import sys
 
@@ -677,7 +676,7 @@ class Gameboard:
                 yield v
         
 
-class AIEngine(threading.Thread):
+class AIEngine(object):
     def __init__(self, board):
         self.board = copy.deepcopy(board)
         self.moves = []
@@ -882,15 +881,15 @@ class AIEngine(threading.Thread):
         """
         Takes a ply and goes x moves ahead, returning the score.
         """
-        global ai
         b = AIEngine(board)
         b.apply((firstply,))
         for i in range(1, lookahead+1):
             try:
-                AIEngine.calculate_best_move(b.board, b.board.turn_to_act(), 0)
+                result = AIEngine.calculate_best_move(b.board, b.board.turn_to_act(), 0)
+                assert result
+                b.apply((result,))
             except NoMoveException:
                 break
-            b.apply((ai.decision,))
         return b.score(token)
 
     @staticmethod
@@ -923,7 +922,7 @@ class AIEngine(threading.Thread):
                 return True
             return False
         
-        global ai
+        decision = None
         best_cap, best_setup, best_move = None, None, None
         
         b = AIEngine(board)
@@ -939,15 +938,14 @@ class AIEngine(threading.Thread):
 
             immediate_threats = b.filter_adjacent_threats(token)
             if immediate_threats:
-                ai.decision = b.filter_best(token, immediate_threats)
-                ai_log.info('save %i %s', ai.decision.score, ai.decision or 'x')
+                decision = b.filter_best(token, immediate_threats)
+                ai_log.info('save %i %s', decision.score, decision or 'x')
             else:
                 tsb = AIEngine.select_best_future(b.board, itertools.chain(b.threats, b.setups), 0, token)
- 
                 if tsb:
-                    ai.decision = tsb
+                    decision = tsb
                 else:
-                    ai.decision = b.filter_best(token, b.nonoptimal_troll_moves())
+                    decision = b.filter_best(token, b.nonoptimal_troll_moves())
 
             ai_log.info('# threats: %i', len(b.threats))
             ai_log.debug('%s', ', '.join(str(s) for s in b.threats))
@@ -960,10 +958,10 @@ class AIEngine(threading.Thread):
 
             b.threats = list(b.board.find_caps(token))
 
-            ai.decision = b.filter_best(token, b.threats)
-            ai_log.info('best cap %i %s', ai.decision.score, ai.decision or 'x')
+            decision = b.filter_best(token, b.threats)
+            ai_log.info('best cap %i %s', decision.score, decision or 'x')
             
-            if not ai.decision:
+            if not decision:
                 troll_cd = b.filter_capture_destinations(list(b.board.find_caps('troll')))
                 b.setups = list(b.board.find_setups(token, Bitboard(troll_cd)))
                 b.moves = list(b.board.find_moves(token))
@@ -989,14 +987,14 @@ class AIEngine(threading.Thread):
                         break
 
                 if tsb:
-                    ai.decision = AIEngine.select_best_future(b.board, \
-                                                              [tsb, best_move], \
-                                                              lookahead, \
-                                                              token)
+                    decision = AIEngine.select_best_future(b.board, \
+                                                           [tsb, best_move], \
+                                                           lookahead, \
+                                                           token)
                 elif best_move:
-                    ai.decision = best_move
+                    decision = best_move
                 else:
-                    ai.decision = next(b.board.find_moves('dwarf'))
+                    decision = next(b.board.find_moves('dwarf'))
                 
             ai_log.info('# threats: %i', len(list(b.threats)))
             ai_log.debug('%s', ', '.join(str(s) for s in b.threats))
@@ -1005,7 +1003,9 @@ class AIEngine(threading.Thread):
             ai_log.info('# moves: %i', len(b.moves))
             #ai_log.debug('%s', ', '.join(str(s) for s in b.moves))
             ai_log.info('  T: %i d: %i\n', len(b.board.trolls) * 4, len(b.board.dwarfs))
-        if not ai.decision:
-            raise NoMoveException(token)
 
-ai = threading.local()
+        if not decision:
+            raise NoMoveException(token)
+        else:
+            return decision
+

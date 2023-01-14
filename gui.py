@@ -574,12 +574,11 @@ class DesktopGUI(tkinter.Frame):
             self.delay_ai = True
             self.user_notice.set("Computer is thinking...")
             try:
-                ai_thread = threading.Thread(target=AIEngine.calculate_best_move(self.board, \
-                                                                                 self.board.turn_to_act(), \
-                                                                                 self.lookahead_count))
-                ai_thread.start()
-                ai_thread.join()
-                self.execute_ply(ai.decision)
+                decision = AIEngine.calculate_best_move(self.board, \
+                                                        self.board.turn_to_act(), \
+                                                        self.lookahead_count)
+                assert decision
+                self.execute_ply(decision)
                 self.delay_ai = False    
             except NoMoveException as ex:
                 print("{0} has no moves available.".format(ex.token))
