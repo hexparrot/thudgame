@@ -1,0 +1,201 @@
+/* Layout mimics the Tkinter desktop UI: menu bar on top, board + ply
+ * list side-by-side in the main area, and a status bar pinned to the
+ * bottom showing piece counts and the (fixed-width) turn indicator. */
+
+:root {
+  --board-size: 600px;
+  --square-size: 40px;
+  --bg: #2a2a2a;
+  --panel: #444;
+  --panel-dark: #1a1a1a;
+  --border: #666;
+  --fg: #eee;
+  --accent: #4ea1ff;
+  --error: #ff7070;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  font-family: Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  user-select: none;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+#menubar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 10px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.menu-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.menu-group.right {
+  margin-left: auto;
+}
+
+.menu-label {
+  font-weight: bold;
+  opacity: 0.8;
+}
+
+#menubar button {
+  background: #333;
+  color: var(--fg);
+  border: 1px solid #555;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+#menubar button:hover {
+  background: #555;
+}
+
+#role-banner {
+  font-weight: bold;
+  color: var(--accent);
+}
+
+main {
+  display: flex;
+  padding: 12px;
+  gap: 16px;
+  flex: 1;
+}
+
+#board-wrap {
+  position: relative;
+  width: var(--board-size);
+  height: var(--board-size);
+  flex: 0 0 auto;
+}
+
+#board-bg {
+  display: block;
+  width: var(--board-size);
+  height: var(--board-size);
+  pointer-events: none;
+}
+
+#sprites {
+  position: absolute;
+  inset: 0;
+}
+
+.sprite {
+  position: absolute;
+  width: var(--square-size);
+  height: var(--square-size);
+  cursor: grab;
+  transition: left 80ms ease-out, top 80ms ease-out;
+}
+
+.sprite.dragging {
+  cursor: grabbing;
+  transition: none;
+  z-index: 100;
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));
+}
+
+.highlight {
+  position: absolute;
+  width: var(--square-size);
+  height: var(--square-size);
+  border: 2px solid var(--accent);
+  pointer-events: none;
+  box-sizing: border-box;
+  background: rgba(78, 161, 255, 0.15);
+}
+
+#sidebar {
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+}
+
+#players-summary {
+  font-size: 12px;
+  padding: 6px 8px;
+  background: var(--panel-dark);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  font-family: monospace;
+}
+
+#ply-list {
+  flex: 1;
+  background: var(--panel-dark);
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  overflow-y: auto;
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  height: var(--board-size);
+}
+
+.ply-entry {
+  padding: 2px 4px;
+  white-space: pre;
+}
+
+.ply-entry:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+#status-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 12px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+
+#notice {
+  flex: 1;
+  font-size: 13px;
+  min-height: 1em;
+}
+
+#notice.error {
+  color: var(--error);
+}
+
+.counts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: monospace;
+}
+
+.counts img {
+  width: 22px;
+  height: 22px;
+}
+
+#turn-indicator {
+  font-weight: bold;
+  /* Fixed width to keep the right edge of the status bar steady when
+   * the text changes ("Dwarf to move" vs "Troll to move" have the same
+   * char count, but proportional fonts still render them at different
+   * pixel widths). */
+  display: inline-block;
+  width: 22ch;
+  text-align: right;
+}

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Thud!</title>
+  <link rel="stylesheet" href="/web/style.css">
+</head>
+<body>
+  <header id="menubar">
+    <div class="menu-group">
+      <span class="menu-label">Game:</span>
+      <button data-action="reset" data-ruleset="classic">New Classic</button>
+      <button data-action="reset" data-ruleset="kvt">New Koom Valley</button>
+      <button data-action="reset" data-ruleset="klash">New Klash</button>
+    </div>
+    <div class="menu-group">
+      <span class="menu-label">Side:</span>
+      <button data-action="claim" data-side="dwarf">Play as Dwarf</button>
+      <button data-action="claim" data-side="troll">Play as Troll</button>
+      <button data-action="release">Spectate</button>
+    </div>
+    <div class="menu-group right">
+      <span id="role-banner">Connecting&hellip;</span>
+    </div>
+  </header>
+
+  <main>
+    <div id="board-wrap">
+      <img id="board-bg" src="/img/tb.gif" alt="Thud board" draggable="false">
+      <div id="sprites"></div>
+    </div>
+    <aside id="sidebar">
+      <div id="players-summary"></div>
+      <div id="ply-list" role="log" aria-label="Move history"></div>
+    </aside>
+  </main>
+
+  <footer id="status-bar">
+    <span id="notice"></span>
+    <span class="counts">
+      <img src="/img/pawn.gif" alt="Dwarf"><span id="dwarf-count">0</span>
+      <img src="/img/rook.gif" alt="Troll"><span id="troll-count">0</span>
+    </span>
+    <span id="turn-indicator">&nbsp;</span>
+  </footer>
+
+  <script src="/web/app.js"></script>
+</body>
+</html>
