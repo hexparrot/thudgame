@@ -16,6 +16,30 @@ class NoMoveException(Exception):
         Exception.__init__(self)
         self.token = token
 
+class MCTSNode:
+    def __init__(self, game_state, parent=None):
+        self.game_state = game_state
+        self.parent = parent
+        self.children = []
+        self.visits = 0
+        self.value = 0
+
+    def __repr__(self):
+        return f"MCTSNode(visits={self.visits}, value={self.value})"
+
+    def add_child(self, child_node):
+        self.children.append(child_node)
+
+    def update_value(self, new_value):
+        self.value += new_value
+        self.visits += 1
+
+    def average_value(self):
+        if self.visits == 0:
+            return 0
+        return self.value / self.visits
+
+
 class InfluenceMap:
     BOARD_WIDTH = 17
     
@@ -69,75 +93,88 @@ class InfluenceMap:
             
 
 class Bitboard:
-    BOARD_WIDTH = 17
-    def __init__(self, positions=[]):
-        self.x, self.value = 0, 0
+    """Fixed-width 289-bit mask over a 17x17 board.
 
-        for i in positions:
-            self.value += 1 << (Bitboard.BOARD_WIDTH**2 - i - 1)
+    Bit/position convention: a board position ``p`` (0..288) corresponds to
+    bit ``N - 1 - p`` of ``value``. Position 0 is the most-significant bit;
+    position 288 is the least-significant bit. ``str(bb)`` is therefore a
+    289-character binary string in position order (leftmost char = position 0),
+    which is the form ``InfluenceMap`` and ``Gameboard.display`` rely on.
+
+    All operations are width-safe: shifts and ``~`` mask back to the 289-bit
+    field so values never go negative or grow beyond the board.
+    """
+
+    BOARD_WIDTH = 17
+    N = BOARD_WIDTH * BOARD_WIDTH
+    MASK = (1 << N) - 1
+
+    __slots__ = ('value',)
+
+    def __init__(self, positions=None):
+        self.value = 0
+        if positions:
+            for p in positions:
+                self.value |= 1 << (Bitboard.N - 1 - p)
 
     def __str__(self):
-        s = bin(self.value)
-        if s.startswith('-',0,1):
-            s = s.lstrip('-0b').zfill(Bitboard.BOARD_WIDTH**2)
-            s = s.replace('1','2').replace('0','1').replace('2','0')
-            return s[:-1] + '1'
-        return s.lstrip('0b').zfill(Bitboard.BOARD_WIDTH**2)
+        return format(self.value & Bitboard.MASK, '0{}b'.format(Bitboard.N))
+
+    def __repr__(self):
+        return 'Bitboard.create({})'.format(self.value & Bitboard.MASK)
 
     def __len__(self):
-        return str(self).lstrip('-0b').count('1')
-    
+        return (self.value & Bitboard.MASK).bit_count()
+
     def __getitem__(self, key):
-        return str(self)[key]
+        if isinstance(key, slice):
+            return str(self)[key]
+        return (self.value >> (Bitboard.N - 1 - key)) & 1
 
     def __iter__(self):
-        return self
-
-    def __next__(self):
-        self.x += 1
-        if self.x > Bitboard.BOARD_WIDTH**2:
-            self.x = 0
-            raise StopIteration
-        return self[self.x - 1]
+        v = self.value & Bitboard.MASK
+        for i in range(Bitboard.N):
+            yield (v >> (Bitboard.N - 1 - i)) & 1
 
     def __lshift__(self, other):
-        new_board = Bitboard()
-        new_board.value = self.value << other
-        return new_board
+        return Bitboard.create((self.value << other) & Bitboard.MASK)
 
     def __rshift__(self, other):
-        new_board = Bitboard()
-        new_board.value = self.value >> other
-        return new_board
+        return Bitboard.create(self.value >> other)
 
     def __and__(self, other):
-        new_board = Bitboard()
-        new_board.value = self.value & other.value
-        return new_board
+        return Bitboard.create(self.value & other.value)
 
     def __or__(self, other):
-        new_board = Bitboard()
-        new_board.value = self.value | other.value
-        return new_board
+        return Bitboard.create(self.value | other.value)
 
     def __invert__(self):
-        new_board = Bitboard.create(self.value)
-        new_board.value = ~new_board.value
-        return new_board
+        return Bitboard.create((~self.value) & Bitboard.MASK)
 
     def __bool__(self):
-        return bool(len(self))
+        return bool(self.value & Bitboard.MASK)
+
+    def __eq__(self, other):
+        if not isinstance(other, Bitboard):
+            return NotImplemented
+        return (self.value & Bitboard.MASK) == (other.value & Bitboard.MASK)
+
+    def __hash__(self):
+        return hash(self.value & Bitboard.MASK)
 
     def get_bits(self):
-        for i, v in enumerate(str(self)):
-            if int(v):
+        """Yield positions (0..N-1) of set bits, in ascending order."""
+        v = self.value & Bitboard.MASK
+        for i in range(Bitboard.N):
+            if v & (1 << (Bitboard.N - 1 - i)):
                 yield i
 
     @staticmethod
     def create(integer):
-        new_board = Bitboard()
-        new_board.value = integer
-        return new_board
+        """Build a Bitboard from a raw integer, masked to the 289-bit field."""
+        b = Bitboard()
+        b.value = integer & Bitboard.MASK
+        return b
 
 class Ply:
     """Implements game-notation fragments"""
@@ -182,9 +219,7 @@ class Ply:
             return True
     
     def __hash__(self):
-        for i,v in self.captured:
-            caps += (v << ((i+2)*9))
-        return (self.origin) + (self.dest << 9) + caps
+        return (self.origin) + (self.dest << 9)
         
     def __bool__(self):
         if self.token and self.origin and self.dest:
