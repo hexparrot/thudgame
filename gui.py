@@ -6,17 +6,17 @@ __license__ = "MIT License"
 __version__ = "1.8.0"
 __email__ = "wdchromium@gmail.com"
 
-from thudclasses import *
-from thud import *
+from thud import (
+    AIEngine,
+    Gameboard,
+    NoMoveException,
+    Ply,
+)
 
-import copy
+import re
+import sys
 import tkinter
 import tkinter.filedialog
-import math
-import re
-import itertools
-import random
-import sys
 
 # AI poll interval, in milliseconds. Used by DesktopGUI._cpu_tick to
 # re-schedule the CPU-turn check via root.after, which is the Tk-safe
