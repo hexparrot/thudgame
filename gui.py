@@ -17,39 +17,16 @@ import re
 import itertools
 import random
 import sys
-import threading
 
-class RepeatTimer(threading.Thread):
-    """
-    This borrowed class repeats at 1 second intervals to see if it is a
-    computer's turn to act on behalf of the troll/dwarf.
-    
-    # Copyright (c) 2009 Geoffrey Foster
-    # http://g-off.net/software/a-python-repeatable-threadingtimer-class
-    """
-    def __init__(self, interval, function, iterations=0, args=[], kwargs={}):
-        threading.Thread.__init__(self)
-        self.interval = interval
-        self.function = function
-        self.iterations = iterations
-        self.args = args
-        self.kwargs = kwargs
-        self.finished = threading.Event()
- 
-    def run(self):
-        count = 0
-        while not self.finished.is_set() and (self.iterations <= 0 or count < self.iterations):
-            self.finished.wait(self.interval)
-            if not self.finished.is_set():
-                self.function(*self.args, **self.kwargs)
-                count += 1
- 
-    def cancel(self):
-        self.finished.set()
+# AI poll interval, in milliseconds. Used by DesktopGUI._cpu_tick to
+# re-schedule the CPU-turn check via root.after, which is the Tk-safe
+# replacement for the prior thread-based RepeatTimer.
+CPU_POLL_MS = 200
 
 class DesktopGUI(tkinter.Frame):
     """Implements the main desktop GUI"""
     def __init__(self, master):
+        self.master = master
         master.title('Thud')
 
         self.sprites = {}
@@ -133,6 +110,10 @@ class DesktopGUI(tkinter.Frame):
         self.subframe2_button3.bind('<Button-1>', self.goto_ply)
         self.subframe2_button4.bind('<Button-1>', self.goto_ply)
 
+        # Listbox selection binding is a one-shot; previously rebound on
+        # every move inside notate_move, accumulating bindings unnecessarily.
+        self.listbox.bind('<<ListboxSelect>>', self.click_listbox_left)
+
         menubar = tkinter.Menu(root)
         root.config(menu=menubar)
         game_dropdown = tkinter.Menu(menubar)
@@ -168,25 +149,29 @@ class DesktopGUI(tkinter.Frame):
         # Copyright Marc Boeren
         # http://www.million.nl/thudboard/
         """
-        try:
-            if self.alt_iconset.get():
-                self.image_troll = tkinter.PhotoImage(file='troll.gif')
-                self.image_dwarf = tkinter.PhotoImage(file='dwarf.gif')
-                self.image_thudstone = tkinter.PhotoImage(file='rock.gif')
-                self.d.configure(image=self.image_dwarf)
-                self.t.configure(image=self.image_troll)
-            else:
-                self.image_troll = tkinter.PhotoImage(file='rook.gif')
-                self.image_dwarf = tkinter.PhotoImage(file='pawn.gif')
-                self.image_thudstone = tkinter.PhotoImage(file='thudstone.gif')
-                self.d.configure(image=self.image_dwarf)
-                self.t.configure(image=self.image_troll)
-        except Exception as e:
-            print(e)
-            self.user_notice.set("Required files not found--maintaining iconset")
-            self.alt_iconset.set(not self.alt_iconset.get())
-            self.change_iconset()
+        if self.alt_iconset.get():
+            files = ('troll.gif', 'dwarf.gif', 'rock.gif')
+        else:
+            files = ('rook.gif', 'pawn.gif', 'thudstone.gif')
 
+        try:
+            troll_img = tkinter.PhotoImage(file=files[0])
+            dwarf_img = tkinter.PhotoImage(file=files[1])
+            stone_img = tkinter.PhotoImage(file=files[2])
+        except tkinter.TclError as e:
+            # Revert the checkbutton state silently (no recursion) and tell
+            # the user. The prior implementation flipped the flag back and
+            # called itself recursively, which could loop forever if both
+            # iconsets were missing.
+            self.alt_iconset.set(not self.alt_iconset.get())
+            self.user_notice.set("Iconset files not found: {}".format(e))
+            return
+
+        self.image_troll = troll_img
+        self.image_dwarf = dwarf_img
+        self.image_thudstone = stone_img
+        self.d.configure(image=self.image_dwarf)
+        self.t.configure(image=self.image_troll)
         self.sync_sprites()
 
     def goto_ply(self, event):
@@ -248,29 +233,28 @@ class DesktopGUI(tkinter.Frame):
     def file_savegame(self):
         """Opens save dialog box and exports moves to text file (.thud)"""
         def tostr(token, piece_list):
-            '''pc_string = []
-            for np in piece_list:
-                pc_string.append(token + str(np))'''
             pc_string = map(Ply.position_to_notation, piece_list)
             return (','+token).join(pc_string)
-            
+
         filename = tkinter.filedialog.asksaveasfilename(title="Save Thudgame", \
                                               filetypes=[('thud-game files', '*.thud')])
         if not filename:
             return
 
         try:
-            f = open(filename, 'w')
-            first_string  = 'd' + tostr('d',self.board.get_default_positions('dwarf', self.board.ruleset))
-            first_string += ',T' + tostr('T',self.board.get_default_positions('troll', self.board.ruleset))
-            first_string += ',R' + tostr('R',self.board.get_default_positions('thudstone', self.board.ruleset))
+            with open(filename, 'w') as f:
+                first_string  = 'd' + tostr('d', self.board.get_default_positions('dwarf', self.board.ruleset))
+                first_string += ',T' + tostr('T', self.board.get_default_positions('troll', self.board.ruleset))
+                first_string += ',R' + tostr('R', self.board.get_default_positions('thudstone', self.board.ruleset))
 
-            f.write(first_string + '\n')
+                f.write(first_string + '\n')
 
-            for k in self.board.ply_list:
-                f.write(str(k) + '\n')
-        except:
-            pass
+                for k in self.board.ply_list:
+                    f.write(str(k) + '\n')
+        except OSError as e:
+            # Previously a bare `except: pass` silently dropped save failures;
+            # surface the error to the user instead.
+            self.user_notice.set("Save failed: {}".format(e))
 
     def sync_sprites(self):
         """Clears all loaded sprites and reloads according to current game positions"""
@@ -338,21 +322,35 @@ class DesktopGUI(tkinter.Frame):
         self.review_mode = False
 
     def boardClick(self, event):
-        """Responds to clicks that DO not occur by sprite (used for troll materialization"""
+        """Responds to clicks that DO not occur by sprite (used for troll materialization).
+
+        Materialization is only ever legal on the troll default squares,
+        either when Klash is mid-materialize or when 'Allow Illegal Moves'
+        overrides the ruleset gate. The prior boolean expression had a
+        precedence bug (`A or B and C and D` binds as `A or (B and C and D)`)
+        that allowed any click anywhere when illegal play was enabled.
+        """
         notation = (int(event.x // self.square_size), int(event.y // self.square_size))
         position = notation[1] * self.board.BOARD_WIDTH + \
                    notation[0] + self.board.BOARD_WIDTH + 1
-        
-        if self.allow_illegal_play.get() or \
-           (self.board.ruleset == 'klash' and \
-           self.board.turn_to_act() == 'troll' and \
-           self.board.klash_trolls < 6) and \
-           position in self.board.get_default_positions('troll', 'classic'):
-            ply = Ply('troll', position, position, '')
-            self.board.add_troll(position)
-            self.board.ply_list.append(ply)
-            self.notate_move(ply)
-            self.sync_sprites()
+
+        troll_default_squares = set(self.board.get_default_positions('troll', 'classic'))
+        if position not in troll_default_squares:
+            return
+
+        in_klash_materialize = (
+            self.board.ruleset == 'klash'
+            and self.board.turn_to_act() == 'troll'
+            and self.board.klash_trolls < 6
+        )
+        if not (self.allow_illegal_play.get() or in_klash_materialize):
+            return
+
+        ply = Ply('troll', position, position, [])
+        self.board.add_troll(position)
+        self.board.ply_list.append(ply)
+        self.notate_move(ply)
+        self.sync_sprites()
 
     def mouseDown(self, event):
         """This function will record the notation of all clicks
@@ -548,10 +546,10 @@ class DesktopGUI(tkinter.Frame):
         """Add move to the listbox of moves"""
         ply_num = str((len(self.board.ply_list) + 1)/2).ljust(5)
         self.listbox.insert('end', ply_num + str(ply))
-        # Colorize alternating lines of the listbox
-        for i in range(0,self.listbox.size(),2):
+        # Colorize alternating lines of the listbox (the <<ListboxSelect>>
+        # binding is installed once in draw_ui, not per-move).
+        for i in range(0, self.listbox.size(), 2):
             self.listbox.itemconfigure(i, background='#f0f0ff')
-            self.listbox.bind('<<ListboxSelect>>', self.click_listbox_left)
         self.listbox.yview_moveto(1.0)
         self.update_ui()
 
@@ -564,29 +562,63 @@ class DesktopGUI(tkinter.Frame):
         self.play_out_moves(self.board.ply_list, self.displayed_ply)
 
     def is_cpu_turn(self):
+        """Run one CPU-turn check.
+
+        Scheduling is owned by start_cpu_loop / _cpu_tick (root.after). This
+        method is also called synchronously by tkinter_game.simulate_game,
+        so it must do exactly one unit of work without rescheduling itself.
+
+        Fixed bugs vs. the prior implementation:
+        * Precedence: ``A and B or C and D and not_X and not_Y and not_Z``
+          binds as ``(A and B) or (C and D and not_X and not_Y and not_Z)``,
+          so the delay/review/game-over guards never applied to the troll
+          branch. Reshaped into an explicit guard up front.
+        * ``delay_ai`` stuck on NoMoveException: previously set True in the
+          except block and never reset, freezing the AI loop. Now always
+          reset in the finally block, and a player who can't move forfeits.
         """
-        This is the function called 1/second to determine if CPU AI
-        should begin calculating potential moves.
-        """
-        if self.cpu_troll.get() and self.board.turn_to_act() == 'troll' or \
-           self.cpu_dwarf.get() and self.board.turn_to_act() == 'dwarf' and \
-           not self.delay_ai and not self.review_mode and not self.board.game_winner:
-            self.delay_ai = True
-            self.user_notice.set("Computer is thinking...")
-            try:
-                decision = AIEngine.calculate_best_move(self.board, \
-                                                        self.board.turn_to_act(), \
-                                                        self.lookahead_count)
-                assert decision
-                self.execute_ply(decision)
-                self.delay_ai = False    
-            except NoMoveException as ex:
-                print("{0} has no moves available.".format(ex.token))
-                self.delay_ai = True
-            finally:
+        if self.delay_ai or self.review_mode or self.board.game_winner:
+            return
+        side = self.board.turn_to_act()
+        is_cpu = (self.cpu_troll.get() and side == 'troll') or \
+                 (self.cpu_dwarf.get() and side == 'dwarf')
+        if not is_cpu:
+            return
+
+        self.delay_ai = True
+        self.user_notice.set("Computer is thinking...")
+        try:
+            decision = AIEngine.calculate_best_move(self.board, side,
+                                                    self.lookahead_count)
+            assert decision
+            self.execute_ply(decision)
+        except NoMoveException as ex:
+            print("{0} has no moves available.".format(ex.token))
+            # No legal move ⇒ this side loses.
+            self.board.game_winner = 'dwarf' if ex.token == 'troll' else 'troll'
+        finally:
+            self.delay_ai = False
+            if not self.board.game_winner:
                 self.board.game_winner = self.board.get_game_outcome()
-                if not self.board.game_winner:
-                    self.user_notice.set("")
+            if self.board.game_winner:
+                self.review_mode = True
+                self.user_notice.set("{} win!".format(self.board.game_winner))
+            else:
+                self.user_notice.set("")
+
+    def start_cpu_loop(self):
+        """Begin the Tk-safe AI poll loop.
+
+        Replaces the prior RepeatTimer (threading.Thread), which called
+        Tk widget methods from a worker thread — Tkinter is not thread-safe
+        and that could crash or corrupt the UI. Now uses root.after to
+        self-reschedule on the Tk event loop.
+        """
+        self._cpu_tick()
+
+    def _cpu_tick(self):
+        self.is_cpu_turn()
+        self.master.after(CPU_POLL_MS, self._cpu_tick)
 
 class tkinter_game:    
     def simulate_set(self, trials=5):
@@ -617,8 +649,7 @@ class tkinter_game:
         global ui
         global root
         ui.newgame_classic()
-        r = RepeatTimer(.2, ui.is_cpu_turn)
-        r.start()
+        ui.start_cpu_loop()
         root.mainloop()
 
 if __name__ == '__main__':
