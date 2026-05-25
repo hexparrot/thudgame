@@ -13,8 +13,11 @@ from thud import (
     Ply,
 )
 
+import copy
+import queue
 import re
 import sys
+import threading
 import tkinter
 import tkinter.filedialog
 
@@ -22,6 +25,9 @@ import tkinter.filedialog
 # re-schedule the CPU-turn check via root.after, which is the Tk-safe
 # replacement for the prior thread-based RepeatTimer.
 CPU_POLL_MS = 200
+# How often to advance the "Computer is thinking..." ellipsis. Multiple of
+# CPU_POLL_MS so the dots tick at a steady cadence.
+THINKING_TICK_MS = 500
 
 class DesktopGUI(tkinter.Frame):
     """Implements the main desktop GUI"""
@@ -37,6 +43,13 @@ class DesktopGUI(tkinter.Frame):
         self.displayed_ply = 0
         self.delay_ai = False
 
+        # Async AI plumbing: ai_thread runs calculate_best_move on a
+        # worker, push results onto ai_queue, and the Tk-thread _cpu_tick
+        # drains the queue. The worker never touches Tk widgets.
+        self.ai_queue = queue.Queue()
+        self.ai_thread = None
+        self._thinking_ticks = 0
+
         self.compulsory_capturing = tkinter.BooleanVar()
         self.allow_illegal_play = tkinter.BooleanVar()
         self.cpu_troll = tkinter.BooleanVar()
@@ -50,6 +63,8 @@ class DesktopGUI(tkinter.Frame):
         self.compulsory_capturing.set(True)
         self.allow_illegal_play.set(False)
         self.alt_iconset.set(False)
+
+        self._bind_shortcuts(master)
 
     def draw_ui(self, master):
         """Loads all the images and widgets for the UI"""
@@ -79,10 +94,11 @@ class DesktopGUI(tkinter.Frame):
         self.subframe2 = tkinter.Frame(self.subframe, height=50, borderwidth=2, relief='raised')
         self.subframe2.pack(side='right')
 
-        #"status bar" labels for images and piece counts
+        #"status bar" labels for images, piece counts, and turn/ruleset
         self.dwarf_count = tkinter.StringVar()
         self.troll_count = tkinter.StringVar()
         self.user_notice = tkinter.StringVar()
+        self.turn_indicator = tkinter.StringVar()
 
         self.subframe_label = tkinter.Label(master, textvariable=self.user_notice, width=80)
         self.subframe_label.pack(side='left')
@@ -93,6 +109,14 @@ class DesktopGUI(tkinter.Frame):
         self.t = tkinter.Label(self.subframe, image=self.image_troll)
         self.t.pack(side='left')
         tkinter.Label(self.subframe, textvariable=self.troll_count).pack(side='left')
+        # Fixed width + anchor so the label reserves the same screen space
+        # whatever the text becomes. Without this, "Dwarf to move" and
+        # "Troll to move" render at different pixel widths under Tk's
+        # default proportional font, shoving the rest of the status bar
+        # left/right on every turn.
+        tkinter.Label(self.subframe, textvariable=self.turn_indicator,
+                      font=("Helvetica", 10, "bold"),
+                      width=28, anchor='w', padx=10).pack(side='left')
 
         #playback controls
         self.subframe2_button1 = tkinter.Button(self.subframe2, text="|<<")
@@ -185,9 +209,16 @@ class DesktopGUI(tkinter.Frame):
         self.play_out_moves(self.board.ply_list, button_clicked)
 
     def update_ui(self):
-        """Updates UI piece count to reflect current live pieces"""
+        """Updates UI piece count, turn indicator, and clears notices."""
         self.dwarf_count.set("Dwarfs Remaining: " + str(len(self.board.dwarfs)))
         self.troll_count.set("Trolls Remaining: " + str(len(self.board.trolls)))
+        side = self.board.turn_to_act().capitalize()
+        ruleset = self.board.ruleset.upper() if self.board.ruleset == 'kvt' else self.board.ruleset.capitalize()
+        if self.board.game_winner:
+            self.turn_indicator.set("{} win ({})".format(
+                self.board.game_winner.capitalize(), ruleset))
+        else:
+            self.turn_indicator.set("{} to move ({})".format(side, ruleset))
         self.user_notice.set("")
 
     def file_opengame(self):
@@ -562,20 +593,11 @@ class DesktopGUI(tkinter.Frame):
         self.play_out_moves(self.board.ply_list, self.displayed_ply)
 
     def is_cpu_turn(self):
-        """Run one CPU-turn check.
+        """Synchronous one-turn CPU step (used by tkinter_game.simulate_game).
 
-        Scheduling is owned by start_cpu_loop / _cpu_tick (root.after). This
-        method is also called synchronously by tkinter_game.simulate_game,
-        so it must do exactly one unit of work without rescheduling itself.
-
-        Fixed bugs vs. the prior implementation:
-        * Precedence: ``A and B or C and D and not_X and not_Y and not_Z``
-          binds as ``(A and B) or (C and D and not_X and not_Y and not_Z)``,
-          so the delay/review/game-over guards never applied to the troll
-          branch. Reshaped into an explicit guard up front.
-        * ``delay_ai`` stuck on NoMoveException: previously set True in the
-          except block and never reset, freezing the AI loop. Now always
-          reset in the finally block, and a player who can't move forfeits.
+        For the Tk event loop, the async path (``_cpu_tick`` /
+        ``_maybe_start_ai`` / ``_drain_ai_results``) is used instead so
+        the UI stays responsive during AI thinking.
         """
         if self.delay_ai or self.review_mode or self.board.game_winner:
             return
@@ -594,17 +616,12 @@ class DesktopGUI(tkinter.Frame):
             self.execute_ply(decision)
         except NoMoveException as ex:
             print("{0} has no moves available.".format(ex.token))
-            # No legal move ⇒ this side loses.
             self.board.game_winner = 'dwarf' if ex.token == 'troll' else 'troll'
         finally:
             self.delay_ai = False
-            if not self.board.game_winner:
-                self.board.game_winner = self.board.get_game_outcome()
-            if self.board.game_winner:
-                self.review_mode = True
-                self.user_notice.set("{} win!".format(self.board.game_winner))
-            else:
-                self.user_notice.set("")
+            self._finalize_turn()
+
+    # --- async AI path (Tk event loop only) -----------------------------
 
     def start_cpu_loop(self):
         """Begin the Tk-safe AI poll loop.
@@ -612,13 +629,133 @@ class DesktopGUI(tkinter.Frame):
         Replaces the prior RepeatTimer (threading.Thread), which called
         Tk widget methods from a worker thread — Tkinter is not thread-safe
         and that could crash or corrupt the UI. Now uses root.after to
-        self-reschedule on the Tk event loop.
+        self-reschedule on the Tk event loop. AI computation runs in a
+        worker thread so the UI keeps painting and reacting to events.
         """
         self._cpu_tick()
 
     def _cpu_tick(self):
-        self.is_cpu_turn()
+        self._drain_ai_results()
+        self._maybe_start_ai()
+        self._animate_thinking()
         self.master.after(CPU_POLL_MS, self._cpu_tick)
+
+    def _maybe_start_ai(self):
+        """Spawn a worker if it's a CPU turn and one isn't already running."""
+        if self.delay_ai or self.review_mode or self.board.game_winner:
+            return
+        if self.ai_thread is not None and self.ai_thread.is_alive():
+            return
+        side = self.board.turn_to_act()
+        is_cpu = (self.cpu_troll.get() and side == 'troll') or \
+                 (self.cpu_dwarf.get() and side == 'dwarf')
+        if not is_cpu:
+            return
+
+        self.delay_ai = True
+        self._thinking_ticks = 0
+        self.user_notice.set("Computer is thinking.")
+        # Snapshot the board on the Tk thread so the worker sees a frozen
+        # view that can't be mutated by a concurrent user click.
+        snapshot = copy.deepcopy(self.board)
+        self.ai_thread = threading.Thread(
+            target=self._ai_worker,
+            args=(snapshot, side, self.lookahead_count),
+            daemon=True,
+        )
+        self.ai_thread.start()
+
+    def _ai_worker(self, board_snapshot, side, lookahead):
+        """Worker-thread entry point. Must not touch Tk widgets."""
+        try:
+            decision = AIEngine.calculate_best_move(board_snapshot, side, lookahead)
+            self.ai_queue.put(('ply', decision))
+        except NoMoveException as ex:
+            self.ai_queue.put(('nomove', ex.token))
+        except Exception as ex:  # pragma: no cover - defensive
+            self.ai_queue.put(('error', ex))
+
+    def _drain_ai_results(self):
+        """Consume results posted by _ai_worker. Tk thread only."""
+        try:
+            while True:
+                kind, payload = self.ai_queue.get_nowait()
+                if kind == 'ply':
+                    self.execute_ply(payload)
+                elif kind == 'nomove':
+                    print("{0} has no moves available.".format(payload))
+                    self.board.game_winner = 'dwarf' if payload == 'troll' else 'troll'
+                elif kind == 'error':
+                    self.user_notice.set("AI error: {}".format(payload))
+                self.delay_ai = False
+                self._finalize_turn()
+        except queue.Empty:
+            pass
+
+    def _animate_thinking(self):
+        """Tick the ellipsis on the 'Computer is thinking' notice."""
+        if not self.delay_ai:
+            return
+        self._thinking_ticks += 1
+        if (self._thinking_ticks * CPU_POLL_MS) % THINKING_TICK_MS != 0:
+            return
+        dots = '.' * ((self._thinking_ticks // (THINKING_TICK_MS // CPU_POLL_MS) % 3) + 1)
+        self.user_notice.set("Computer is thinking" + dots)
+
+    def _finalize_turn(self):
+        """Common post-move bookkeeping: refresh winner, notice, mode."""
+        if not self.board.game_winner:
+            self.board.game_winner = self.board.get_game_outcome()
+        if self.board.game_winner:
+            self.review_mode = True
+            self.user_notice.set("{} win!".format(self.board.game_winner))
+        else:
+            self.user_notice.set("")
+        # Refresh turn indicator even between AI-only moves.
+        self.update_ui()
+
+    # --- shortcuts and undo --------------------------------------------
+
+    def _bind_shortcuts(self, master):
+        """Wire keyboard shortcuts. Keyed off the root window so they
+        fire regardless of which child has focus."""
+        master.bind('<Control-n>', lambda e: self.newgame_classic())
+        master.bind('<Control-o>', lambda e: self.file_opengame())
+        master.bind('<Control-s>', lambda e: self.file_savegame())
+        master.bind('<Control-z>', lambda e: self.undo_last_ply())
+        master.bind('<Left>',  lambda e: self._step_replay(-1))
+        master.bind('<Right>', lambda e: self._step_replay(1))
+        master.bind('<Home>',  lambda e: self._goto_replay_edge(start=True))
+        master.bind('<End>',   lambda e: self._goto_replay_edge(start=False))
+
+    def undo_last_ply(self, event=None):
+        """Pop the most recent ply and replay everything before it.
+
+        Disabled in review mode and while the AI is thinking, since both
+        would invalidate the assumption that ``ply_list`` describes the
+        current displayed position.
+        """
+        if self.delay_ai or self.review_mode or not self.board.ply_list:
+            return
+        plies = list(self.board.ply_list[:-1])
+        ruleset = self.board.ruleset
+        self.newgame_common(ruleset)
+        for p in plies:
+            self.execute_ply(p)
+        self.update_ui()
+
+    def _step_replay(self, delta):
+        if not self.board.ply_list:
+            return
+        target = max(0, min(len(self.board.ply_list) - 1,
+                            self.displayed_ply + delta))
+        self.play_out_moves(self.board.ply_list, target)
+
+    def _goto_replay_edge(self, start):
+        if not self.board.ply_list:
+            return
+        target = 0 if start else len(self.board.ply_list) - 1
+        self.play_out_moves(self.board.ply_list, target)
 
 class tkinter_game:    
     def simulate_set(self, trials=5):
