@@ -9,6 +9,8 @@ Run the game interactively:
 
 Alternatively, `console.py` can be used to select the next move based on provided gamestate and does not use the GUI. This allows for easy access to AI opponent choices across different platforms. Save an in-progress game from the GUI to see expected formatting and game notation.
 
+For multiplayer over a network, `server.py` runs an aiohttp HTTP + WebSocket server (`pip install aiohttp`) that hosts a single shared game at http://localhost:8080/. The first two players to connect become the dwarf and troll; everyone after that spectates. Players can claim, release, and swap sides at any time, and either player can reset the game (Classic, Koom Valley, or Klash).
+
 EXAMPLES:
 
 ```$ cat start.thud   # saved game after one move
