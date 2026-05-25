@@ -9,13 +9,10 @@ __email__ = "wdchromium@gmail.com"
 from thudclasses import *
 
 import copy
-import math
-import re
 import itertools
-import random
-import sys
 import logging
-import sys
+import math
+import random
 
 ai_log = logging.getLogger('ai_logger')
 ai_log.setLevel(logging.INFO)
@@ -51,27 +48,32 @@ class Gameboard:
             print(str(v).rjust(2), end='')
     
     def get_default_positions(self, token, ruleset):
-        """Returns the starting positions of a given token"""        
+        """Return the starting positions of ``token`` for ``ruleset``.
+
+        The result is a tuple of integer positions, in the order the
+        underlying list literal was written (which file_savegame relies on
+        for readable .thud output). Was previously a ``map`` object — a
+        one-shot iterator that silently broke any caller that iterated
+        twice or did ``position in ...`` after the first traversal.
+        """
         def playable():
-            nonlocal ruleset
+            if ruleset == 'klash':
+                dist_from_center = [0,0,2,3,4,5,6,6,6,6,6,5,4,3,2,0,0]
+            else:
+                dist_from_center = [0,2,3,4,5,6,7,7,7,7,7,6,5,4,3,2,0]
             pos = []
-            
-            if ruleset == 'klash': dist_from_center = [0,0,2,3,4,5,6,6,6,6,6,5,4,3,2,0,0]
-            else: dist_from_center = [0,2,3,4,5,6,7,7,7,7,7,6,5,4,3,2,0]
-            
             for i, v in enumerate(dist_from_center):
                 if v:
-                    for j in range(-v,v+1):
-                        pos.append((i,(self.BOARD_WIDTH//2)+j))
+                    for j in range(-v, v + 1):
+                        pos.append((i, (self.BOARD_WIDTH // 2) + j))
             return pos
 
-        def thudstone():
-            return [(8,8)]
-
-        def troll():
-            nonlocal ruleset
-
-            return {
+        if token == 'playable':
+            notations = playable()
+        elif token == 'thudstone':
+            notations = [(8, 8)]
+        elif token == 'troll':
+            notations = {
                 'classic': [(7,7),(8,7),(9,7),
                             (7,8),      (9,8),
                             (7,9),(8,9),(9,9)],
@@ -79,48 +81,38 @@ class Gameboard:
                         (5,3),(6,3),(8,3),(10,3),(11,3)],
                 'klash': []
                 }[ruleset]
-
-        def dwarf():
-            nonlocal ruleset
-
-            return {
+        elif token == 'dwarf':
+            notations = {
                 'classic': [(6,1), (7,1), (9,1), (10,1),
                             (5,2), (11,2),(4,3), (12,3),
                             (3,4), (13,4),(2,5), (14,5),
-
                             (1,6), (15,6),(1,7), (15,7),
-                            (1,9), (15,9),(1,10), (15,10),
-
-                            (2,11), (14,11),(3,12), (13,12),
-                            (4,13), (12,13),(5,14), (11,14),
-                            (6,15), (7,15), (9,15), (10,15) ],
-                'kvt': [(8, 9), (1, 10), (15, 10), \
-                        (2,11), (14,11), \
-                        (3,12), (13,12), \
-                        (4,13), (12,13), \
-                        (5,14), (11,14), \
-                        (6,15), (7 ,15), (8,15), (9,15), (10,15) ],
-                'klash':[(6, 2), (7, 2), (9, 2), (10, 2), \
-                         (5, 3), (11,3), \
-                         (3, 5), (13,5), \
-                         (2, 6), (14,6), \
-                         (2, 7), (14,7), \
-                         (2, 9), (14,9), \
-                         (2,10), (14,10),\
-                         (3,11), (13,11),\
-                         (5,13), (11,13),\
-                         (6,14), (10,14),\
-                         (7,14), ( 9,14) ]
+                            (1,9), (15,9),(1,10),(15,10),
+                            (2,11),(14,11),(3,12),(13,12),
+                            (4,13),(12,13),(5,14),(11,14),
+                            (6,15),(7,15), (9,15),(10,15)],
+                'kvt': [(8,9), (1,10),(15,10),
+                        (2,11),(14,11),
+                        (3,12),(13,12),
+                        (4,13),(12,13),
+                        (5,14),(11,14),
+                        (6,15),(7,15), (8,15),(9,15),(10,15)],
+                'klash': [(6,2), (7,2), (9,2), (10,2),
+                          (5,3), (11,3),
+                          (3,5), (13,5),
+                          (2,6), (14,6),
+                          (2,7), (14,7),
+                          (2,9), (14,9),
+                          (2,10),(14,10),
+                          (3,11),(13,11),
+                          (5,13),(11,13),
+                          (6,14),(10,14),
+                          (7,14),(9,14)]
                 }[ruleset]
+        else:
+            raise ValueError("unknown token type: {!r}".format(token))
 
-        notations = {
-            'playable': playable(),
-            'thudstone': thudstone(),
-            'troll': troll(),
-            'dwarf': dwarf()
-            }[token]
-
-        return map(Ply.tuple_to_position, notations)
+        return tuple(map(Ply.tuple_to_position, notations))
 
     def get_default_board(self, board_type, ruleset='classic'):
         """
@@ -140,13 +132,13 @@ class Gameboard:
         """
         Checks all bitboards to see which piece resides on the square.
         """
-        if int(self.trolls[position]):
+        if self.trolls[position]:
             return 'troll'
-        elif int(self.dwarfs[position]):
+        elif self.dwarfs[position]:
             return 'dwarf'
-        elif int(self.thudstone[position]):
+        elif self.thudstone[position]:
             return 'thudstone'
-        elif int(self.playable[position]):
+        elif self.playable[position]:
             return 'empty'            
 
     def add_troll(self, pos):
@@ -214,12 +206,8 @@ class Gameboard:
         return self.delta_to_direction(delta)
 
     def check_if_all(self, seq, token):
-        """
-        Function returns true if all members in seq are of token type.
-        """
-        for i in filter(lambda x: x != token, seq):
-            return False
-        return True
+        """True if every item in ``seq`` equals ``token``."""
+        return all(x == token for x in seq)
 
     def get_range(self, origin, dest):
         """
@@ -242,40 +230,45 @@ class Gameboard:
         return capturable
 
     def validate_move(self, origin, dest, testmoves=True, testcaps=True):
-        """
-        Master fucntion--receives two locations and determines validity of move/capture.
-        Function will check origin piece and automatically use applicable logic
-        for movement and captures.
+        """Determine whether a move from ``origin`` to ``dest`` is legal.
+
+        Returns a 3-tuple ``(is_valid_move, is_valid_capture, captured)``.
+        Dispatches to ruleset-appropriate capture logic. Caller must check
+        ``is_materializing`` separately for Klash troll materialization.
         """
         def is_materializing(origin, dest):
-            """
-            If true, the move attempted is to materialize a troll in KLASH
-            """
-            if origin == dest and \
-               (len(self.ply_list) % 2 and 'troll') and \
-               self.token_at(origin) == 'empty' and \
-               origin in self.get_default_positions('troll', 'classic'):
+            """True if this is a Klash troll materialization attempt."""
+            if (origin == dest
+                and (len(self.ply_list) % 2 and 'troll')
+                and self.token_at(origin) == 'empty'
+                and origin in self.get_default_positions('troll', 'classic')):
                 return True
 
         def is_dumb(origin, dest):
-            """
-            If true, the move is invalid under all circumstance and games.
-            Exception is is_materializing which must be called prior to this.
+            """True if the move is invalid under all rulesets.
+
+            Materialization (origin == dest) is handled separately by
+            ``is_materializing``; everything else with origin == dest is dumb.
             """
             try:
-                if not Bitboard([origin]) & self.playable:
-                    return True
-                elif not Bitboard([dest]) & self.playable:
-                    return True
-                elif origin == dest:
-                    return True
-                else:
-                    t_origin, t_dest = Ply.position_to_tuple(origin), Ply.position_to_tuple(dest)
-                    if t_origin[0] - t_dest[0] and t_origin[1] - t_dest[1]:
-                        if abs(t_origin[0] - t_dest[0]) != abs(t_origin[1] - t_dest[1]):
-                            return True
-            except:
+                origin_bb = Bitboard([origin])
+                dest_bb = Bitboard([dest])
+            except (TypeError, ValueError):
                 return True
+            if not (origin_bb & self.playable):
+                return True
+            if not (dest_bb & self.playable):
+                return True
+            if origin == dest:
+                return True
+            t_origin = Ply.position_to_tuple(origin)
+            t_dest = Ply.position_to_tuple(dest)
+            # Diagonal moves require equal file/rank delta; otherwise dumb.
+            df = t_origin[0] - t_dest[0]
+            dr = t_origin[1] - t_dest[1]
+            if df and dr and abs(df) != abs(dr):
+                return True
+            return False
 
         def must_be_jump(position):
             """
@@ -285,7 +278,7 @@ class Gameboard:
             if self.ply_list and \
                self.ply_list[-1].token == 'troll' and \
                self.ply_list[-1].captured and \
-               int(self.trolls[position]):
+               self.trolls[position]:
                 return True
 
         def is_valid_cap_kvt(origin, dest):
@@ -293,14 +286,14 @@ class Gameboard:
             Checks if a capture is valid in KVT
             """
             capturable = []
-            if int(self.dwarfs[origin]):
+            if self.dwarfs[origin]:
                 for i in self.tokens_adjacent(dest, 'troll'):
                     direction = self.get_direction(dest, i)
                     seq = self.get_range(dest, dest + direction + direction)
                     if seq == ['empty', 'troll', 'dwarf']:
                         capturable.append(dest + direction)
                 return capturable
-            elif int(self.trolls[origin]):
+            elif self.trolls[origin]:
                 if self.get_range(origin, dest) == ['troll', 'dwarf', 'empty']:
                     return [origin + self.get_direction(origin, dest)]
             return []
@@ -311,7 +304,7 @@ class Gameboard:
             """
             verified, capturable = [], []
             
-            if int(self.dwarfs[origin]):
+            if self.dwarfs[origin]:
                 seq = self.get_range(origin, dest)
                 if seq.pop(-1) == 'troll' and seq.pop(0) == 'dwarf':
                     if not len(seq):
@@ -323,7 +316,7 @@ class Gameboard:
                         newseq = self.get_range(origin, origin + direction * len(seq))
                         if self.check_if_all(newseq, 'dwarf'):
                             return [dest]
-            elif int(self.trolls[origin]):
+            elif self.trolls[origin]:
                 seq = self.get_range(origin, dest)
                 if seq.pop(-1) == 'empty' and seq.pop(0) == 'troll':
                     capturable = self.tokens_adjacent(dest, 'dwarf')
@@ -407,26 +400,20 @@ class Gameboard:
             return not board
 
         def check_mobilized():
-            """Iterate through network of dwarfs to see if all are physically connected"""
-            def unique(pos_list):  
-                checked = []
-                for i in filter(lambda x: x not in checked, pos_list):
-                    checked.append(i)
-                return checked
-
+            """True if every dwarf is reachable from one starting dwarf
+            by king-moves through dwarf-occupied squares."""
             pieces = self.dwarfs.get_bits()
             openset = [next(pieces)]
             closedset = []
 
-            while len(openset):
+            while openset:
                 closedset.append(openset[0])
                 for i in self.tokens_adjacent(openset[0], 'dwarf'):
                     if i not in closedset:
                         openset.append(i)
                 del openset[0]
 
-            if len(unique(closedset)) == len(self.dwarfs):
-                return True
+            return len(set(closedset)) == len(self.dwarfs)
 
         def check_thudstone_saved():
             """Dwarf win if thudstone successfuly moved to top of board"""
@@ -488,10 +475,10 @@ class Gameboard:
         return pairs
     
     def find_moves(self, token):
-        """
-        Yields all possible moves for ALL pieces of a token.
-        Bitboards can hold all the logic necessary that validate_move
-        is no neccessary.
+        """Yield every legal (non-capture) move for every piece of ``token``.
+
+        Uses bitboard shifts to enumerate destinations directly; doesn't
+        need to call validate_move per candidate.
         """
         def max_movement():
             nonlocal token
@@ -500,8 +487,7 @@ class Gameboard:
                 'dwarf': 15,
                 'thudstone': 0
                 }[token]
-        
-        all_moves = []
+
         max_dist = max_movement()
 
         for d in self.cycle_direction():
@@ -526,8 +512,6 @@ class Gameboard:
         Due to the nature of capturing, this function also executes validate_move
         to remove bitboard positives that are illegal.
         """
-        all_moves = []
-
         for d in self.cycle_direction():
             shift = {
                 'troll': copy.deepcopy(self.trolls),
@@ -550,11 +534,11 @@ class Gameboard:
                     if d > 0:
                         shift = (shift >> d) & self.playable & (~self.occupied_squares() | self.trolls)
                     elif d < 0:
-                        shift = (shift << abs(d)) & self.playable & (~self.occupied_squares() | self.trolls)  
+                        shift = (shift << abs(d)) & self.playable & (~self.occupied_squares() | self.trolls)
                     moves = self.make_set(d, dist, frozenset(shift.get_bits()))
                     if not moves: break
                     for i in moves:
-                        if int(self.trolls[i[1]]):
+                        if self.trolls[i[1]]:
                             result = self.validate_move(i[0], i[1], False, True)
                             if result[1]:
                                 yield Ply(token, i[0], i[1], result[2])
@@ -598,7 +582,7 @@ class Gameboard:
 
                 direction = self.get_direction(ply.dest, ply.origin)
                 iterator = ply.origin
-                while int(self.trolls[iterator]):
+                while self.trolls[iterator]:
                     support_ready.append(iterator)
                     iterator += direction
 
@@ -657,7 +641,7 @@ class Gameboard:
                         moves = self.make_set(d, dist, frozenset(shift.get_bits()))
                         if not moves: break
                         for i in moves:
-                            if int(self.dwarfs[i[1]]):
+                            if self.dwarfs[i[1]]:
                                 yield Ply('troll', i[0], i[1], [])
                     if token == 'dwarf':
                         if not other_map: return
@@ -693,34 +677,27 @@ class AIEngine(object):
         """Scoring function to determine favorability of result"""
         if token == 'troll':
             score = len(self.board.trolls) * 4 - len(self.board.dwarfs)
-            score -= self.filter_threatened_pieces('troll') * 4
         else:
             score = len(self.board.dwarfs) - len(self.board.trolls) * 4
-            score -= self.filter_threatened_pieces('dwarf')
             
         return score
 
     def filter_adjacent_threats(self, token):
-        """
-        Identifies enemies that are adjacent to eachother and finds all
-        captures to eliminate this threat.  This logic *should* be called
-        first, e.g., trolls will lose 4 pts immediately if unattended
-        """
-        def unique(positions):
-            """Removes duplicates in list"""
-            checked = []
-            for i in filter(lambda x: x not in checked, positions):
-                checked.append(i)
-            return checked
-        
-        adjacent_threats, solutions = [], []
-        if token == 'troll':
-            for t in self.board.trolls.get_bits():
-                adjacent_threats.extend(self.board.tokens_adjacent(t, 'dwarf'))
-            adjacent_threats = unique(adjacent_threats)
-        elif token == 'dwarf':
-            pass
+        """Return capture-plies that eliminate dwarfs adjacent to our trolls.
 
+        Adjacency loses 4 points immediately if a troll is left next to a
+        dwarf on the dwarf's turn, so this should be considered first.
+        Dwarf side is intentionally unhandled (the heuristic only makes
+        sense for the side that can be captured by a single move).
+        """
+        if token != 'troll':
+            return []
+
+        adjacent_threats = set()
+        for t in self.board.trolls.get_bits():
+            adjacent_threats.update(self.board.tokens_adjacent(t, 'dwarf'))
+
+        solutions = []
         for j in adjacent_threats:
             for t in self.threats:
                 if j in t.captured:
@@ -728,17 +705,8 @@ class AIEngine(object):
         return solutions
 
     def filter_capture_destinations(self, ply_list):
-        def unique(pos_list):  
-            checked = []
-            for i in filter(lambda x: x not in checked, pos_list):
-                checked.append(i)
-            return checked
-
-        dest_positions = []
-        for p in ply_list:
-            dest_positions.append(p.dest)
-
-        return unique(dest_positions)
+        """Return the unique set of destination squares from a list of plies."""
+        return list({p.dest for p in ply_list})
 
     def find_line_blocks(self):
         """
@@ -766,16 +734,19 @@ class AIEngine(object):
         return best_blockers
 
     def filter_threatened_pieces(self, friendly_token):
-        """Counts the number of pieces that can be captured next turn hypothetically."""
+        """Count friendly pieces that the opponent could capture next turn."""
         def is_threatened(pos):
-            """Cycles opposing token to verify capture is possible of given pos."""
+            """Return True if any opposing piece can capture the piece at pos."""
             if self.board.trolls[pos]:
                 for i in self.board.dwarfs.get_bits():
                     if self.board.validate_move(i, pos, False, True)[1]:
                         return True
             elif self.board.dwarfs[pos]:
                 for i in self.board.trolls.get_bits():
-                    direction = self.get_direction(i, pos)
+                    # Bug-fix: was `self.get_direction`, but AIEngine has no
+                    # such method — it lives on Gameboard. Previously raised
+                    # AttributeError whenever this method was invoked.
+                    direction = self.board.get_direction(i, pos)
                     if self.board.validate_move(i, i + direction, False, True)[1]:
                         return True
                     

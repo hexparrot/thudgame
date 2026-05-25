@@ -6,9 +6,9 @@ __license__ = "MIT License"
 __version__ = "1.8.0"
 __email__ = "wdchromium@gmail.com"
 
-from array import array
-import math
 import itertools
+import math
+import re
 
 class NoMoveException(Exception):
     '''A user-defined exception class.'''
@@ -41,54 +41,60 @@ class MCTSNode:
 
 
 class InfluenceMap:
+    """A 17x17 grid of signed integer "influence" scores.
+
+    Constructed from two Bitboards: ``add`` (friendly pieces, +6 around each)
+    and ``subtract`` (enemy pieces, -6 around each). Influence falls off
+    linearly with Chebyshev distance, out to a 7x7 footprint per piece.
+
+    Used by AIEngine.calculate_best_move to find dense friendly clusters.
+    """
+
     BOARD_WIDTH = 17
-    
+
     def __init__(self, add, subtract):
-        imported_board = array('B')
-        for x in list(str(add)): imported_board.append(int(x))
-        
-        imported_board2 = array('B')
-        for x in list(str(subtract)): imported_board2.append(int(x))
-        
-        self.influence_map = array('B')
-        for x in range(InfluenceMap.BOARD_WIDTH**2): self.influence_map.append(0)
-        
-        for i,v in enumerate(imported_board):
-            if int(v):
+        # Plain list, not array('B'): the prior `array('B')` is unsigned and
+        # raised OverflowError as soon as a negative value was added — the
+        # error was then silently dropped by the bare `except: pass` in
+        # hit(), so subtractive influence from enemy pieces was effectively
+        # ignored.
+        self.influence_map = [0] * (InfluenceMap.BOARD_WIDTH ** 2)
+
+        add_str = str(add)
+        sub_str = str(subtract)
+        for i, c in enumerate(add_str):
+            if c == '1':
                 self.hit(i, 6)
-        for i,v in enumerate(imported_board2):
-            if int(v):
+        for i, c in enumerate(sub_str):
+            if c == '1':
                 self.hit(i, -6)
 
     def __getitem__(self, key):
-        return  self.influence_map[key]
+        return self.influence_map[key]
 
-    def hit(self, pos, value=6):      
-        for i in itertools.product([-3,-2,-1,0,1,2,3], repeat=2):
-            try:
-                position = (pos + (i[0] * 1) + (i[1] * InfluenceMap.BOARD_WIDTH))
-                if position % 17 == 0 or \
-                   position % 17 == 16 or \
-                   position < 17 or \
-                   position > 271:
-                    pass
-                else:
-                    self.influence_map[position] += value // max(abs(i[0]),abs(i[1]),1)
-            except:
-                pass
+    def hit(self, pos, value=6):
+        """Add a falloff "splash" of ``value`` centered at ``pos``."""
+        for di, dj in itertools.product([-3,-2,-1,0,1,2,3], repeat=2):
+            position = pos + di + dj * InfluenceMap.BOARD_WIDTH
+            # Skip non-playable edge columns/rows (the 17x17 grid frames a
+            # 15x15 playable area; columns 0/16 and rows 0/16 are off-board).
+            if (position < 17 or position > 271
+                or position % 17 == 0 or position % 17 == 16):
+                continue
+            self.influence_map[position] += value // max(abs(di), abs(dj), 1)
 
     def highest(self, variance_pct=0):
-        highest = max(self.influence_map)
-        candidates = [] 
-
-        for i,v in enumerate(self.influence_map):
-            if v >= highest * (1-variance_pct):
-                candidates.append(i)
-        return candidates            
+        """Return positions whose influence is within ``variance_pct`` of the max."""
+        top = max(self.influence_map)
+        if top <= 0:
+            return []
+        threshold = top * (1 - variance_pct)
+        return [i for i, v in enumerate(self.influence_map) if v >= threshold]
 
     def display(self):
         for i, v in enumerate(self.influence_map):
-            if not i % self.BOARD_WIDTH: print()
+            if not i % self.BOARD_WIDTH:
+                print()
             print(str(v).rjust(3), end='')
             
 
@@ -191,40 +197,56 @@ class Ply:
                  'F': 6, 'G': 7, 'H': 8, 'J': 9, 'K': 10,
                  'L': 11,'M': 12,'N': 13,'O': 14,'P': 15 } 
 
-    def __init__(self, token, origin, dest, captured=[]):
+    def __init__(self, token, origin, dest, captured=None):
         self.token = token
         self.origin = origin
         self.dest = dest
-        self.captured = captured
+        self.captured = list(captured) if captured else []
         self.score = -100
 
-    def __str__(self):  
-        def make_capstring(captures):
-            cap_string = []
-            for cap in captures:
-                cap_string.append('x' + self.position_to_notation(cap))
-            return ''.join(cap_string)      
+    def _key(self):
+        """Structural-equality key: (token, origin, dest, captured)."""
+        return (self.token, self.origin, self.dest, tuple(sorted(self.captured)))
 
-        return str(self.abbr.get(self.token)) + \
-               str(self.position_to_notation(self.origin)) + '-' + \
-               str(self.position_to_notation(self.dest)) + \
-               make_capstring(self.captured)
+    def __str__(self):
+        cap_string = ''.join('x' + self.position_to_notation(cap)
+                             for cap in self.captured)
+        return (str(self.abbr.get(self.token))
+                + str(self.position_to_notation(self.origin)) + '-'
+                + str(self.position_to_notation(self.dest))
+                + cap_string)
+
+    def __repr__(self):
+        return "Ply({!r}, {!r}, {!r}, {!r})".format(
+            self.token, self.origin, self.dest, self.captured)
 
     def __eq__(self, other):
-        if self.score == other.score:
-            return True
+        # Was previously a score comparison that returned True or None
+        # (no explicit False branch) — collapsing distinct moves with the
+        # same score into one set entry. Score-based ordering is handled
+        # by callers via `key=lambda p: p.score`.
+        if not isinstance(other, Ply):
+            return NotImplemented
+        return self._key() == other._key()
+
+    def __hash__(self):
+        return hash(self._key())
 
     def __lt__(self, other):
-        if self.score < other.score:
-            return True
-    
-    def __hash__(self):
-        return (self.origin) + (self.dest << 9)
-        
+        # Sortable by score (lower = worse for the current side). Callers
+        # generally pass an explicit `key=`, but keep this for the
+        # natural-sort case. Returns a real bool, not None.
+        if not isinstance(other, Ply):
+            return NotImplemented
+        return self.score < other.score
+
     def __bool__(self):
-        if self.token and self.origin and self.dest:
-            return True
-        return False
+        # Was `if token and origin and dest`, which returned False if either
+        # position was the integer 0. Position 0 is off the playable board
+        # in every current ruleset, but the predicate is still wrong.
+        return (self.token is not None
+                and self.origin is not None
+                and self.dest is not None)
 
     @staticmethod
     def position_to_tuple(position):
@@ -254,20 +276,24 @@ class Ply:
         b = Ply.position_to_tuple(b_pos)
         return math.sqrt(pow(a[0] - b[0],2) + pow(a[1] - b[1],2))
 
+    _SIDE_FROM_ABBR = {'d': 'dwarf', 'T': 'troll', 'R': 'thudstone'}
+    _PLY_NOTATION_RE = re.compile(
+        r"([TdR]) ?([A-HJ-P])([0-9]+)-([A-HJ-P])([0-9]+)(.*)"
+    )
+
     @staticmethod
     def parse_string(ply_notation):
-        """Accepts a string indicating a full move, parses into a ply"""
-        import re
+        """Parse one ply of game notation (e.g. 'dF1-G2', 'TG7-F7xE7').
 
-        side = {    'd': 'dwarf',
-                    'T': 'troll',
-                    'R': 'thudstone' }
-
-        REGEX_NOTATION_PLY = r"([T|d|R]) ?([A-HJ-P])([0-9]+)-([A-HJ-P])([0-9]+)(.*)"
-        compiled_notation = re.compile(REGEX_NOTATION_PLY)
-        m = compiled_notation.search(str(ply_notation))
-        if m:
-            return Ply(side.get(m.group(1)), \
-                        Ply.notation_to_position(m.group(2) + m.group(3)), \
-                        Ply.notation_to_position(m.group(4) + m.group(5)), \
-                        list(map(Ply.notation_to_position, m.group(6).split('x')[1:])))
+        Returns ``None`` if the string does not match the ply grammar.
+        """
+        m = Ply._PLY_NOTATION_RE.search(str(ply_notation))
+        if not m:
+            return None
+        captures = [Ply.notation_to_position(c) for c in m.group(6).split('x')[1:]]
+        return Ply(
+            Ply._SIDE_FROM_ABBR.get(m.group(1)),
+            Ply.notation_to_position(m.group(2) + m.group(3)),
+            Ply.notation_to_position(m.group(4) + m.group(5)),
+            captures,
+        )

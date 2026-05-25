@@ -373,7 +373,7 @@ class DesktopGUI(tkinter.Frame):
              self.board.ply_list[-1].captured:
             if self.board.ply_list[-2].token == 'troll' and \
                self.board.ply_list[-3].token == 'troll' and \
-               int(self.board.trolls[self.pickup]):
+               self.board.trolls[self.pickup]:
                 return
             self.sprite_lifted = True
             self.canvas.tag_raise('current')
@@ -381,7 +381,7 @@ class DesktopGUI(tkinter.Frame):
              self.allow_illegal_play.get() or \
              self.board.game_winner or \
              self.board.token_at(self.pickup) == self.board.turn_to_act() or \
-             (int(self.board.thudstone[self.pickup]) and \
+             (self.board.thudstone[self.pickup] and \
              self.board.turn_to_act() == 'dwarf' and \
              self.board.ruleset == 'kvt'):
             self.sprite_lifted = True
