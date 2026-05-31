@@ -7,7 +7,6 @@ Submodules are organized by responsibility:
   * influence_map  — heuristic influence grid (InfluenceMap)
   * gameboard      — rules + legal-move enumeration (Gameboard)
   * ai_engine      — heuristic move chooser (AIEngine, ai_log)
-  * mcts           — work-in-progress MCTS scaffolding (MCTSNode)
 
 The top-level package re-exports the names that the GUI and CLI use so
 ``from thud import *`` still works for existing call sites.
@@ -22,7 +21,6 @@ from .ai_engine import AIEngine, ai_log
 from .bitboard import Bitboard
 from .gameboard import Gameboard
 from .influence_map import InfluenceMap
-from .mcts import MCTSNode
 from .ply import NoMoveException, Ply
 
 __all__ = [
@@ -30,7 +28,6 @@ __all__ = [
     'Bitboard',
     'Gameboard',
     'InfluenceMap',
-    'MCTSNode',
     'NoMoveException',
     'Ply',
     'ai_log',

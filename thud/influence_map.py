@@ -32,12 +32,14 @@ class InfluenceMap:
 
     def hit(self, pos, value=6):
         """Add a falloff splash of ``value`` centered at ``pos``."""
+        W = InfluenceMap.BOARD_WIDTH
         for di, dj in itertools.product([-3, -2, -1, 0, 1, 2, 3], repeat=2):
-            position = pos + di + dj * InfluenceMap.BOARD_WIDTH
-            # Skip non-playable edge columns/rows (the 17x17 grid frames a
-            # 15x15 playable area; columns 0/16 and rows 0/16 are off-board).
-            if (position < 17 or position > 271
-                    or position % 17 == 0 or position % 17 == 16):
+            position = pos + di + dj * W
+            # Skip non-playable edge columns/rows (the WxW grid frames a
+            # (W-2)x(W-2) playable area; the first/last row and column are
+            # off-board).
+            if (position < W or position >= W * (W - 1)
+                    or position % W == 0 or position % W == W - 1):
                 continue
             self.influence_map[position] += value // max(abs(di), abs(dj), 1)
 

@@ -21,7 +21,7 @@ $ python3 console.py next_move < start.thud
 INFO: TROLL
 INFO: turn: 0
 INFO: # threats: 0
-INFO: # setups: 24
+INFO: # setups: 25
 INFO:   T: 32 d: 32
 
 TG7-F7

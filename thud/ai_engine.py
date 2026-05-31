@@ -26,6 +26,11 @@ _handler = logging.StreamHandler()
 _handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
 ai_log.addHandler(_handler)
 
+# A material score below anything achievable in play (real scores lie in
+# roughly [-32, 128]). Used to seed "no ply chosen yet" comparisons so the
+# first real candidate always wins. Matches the default Ply.score sentinel.
+WORST_SCORE = -100
+
 
 class AIEngine(object):
     def __init__(self, board):
@@ -218,7 +223,7 @@ class AIEngine(object):
     @staticmethod
     def select_best_future(board, plies, lookahead, token):
         """Of all candidate plies, return the one with the best predicted future."""
-        best_score = -101
+        best_score = WORST_SCORE - 1
         best_ply = None
         for ply in plies:
             score = AIEngine.predict_future(board, ply, lookahead, token)

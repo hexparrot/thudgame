@@ -36,7 +36,7 @@ class Gameboard:
         which is handled by extra rules in validate_move; this method
         still returns the nominal side-to-move.
         """
-        return len(self.ply_list) % 2 and 'troll' or 'dwarf'
+        return 'troll' if len(self.ply_list) % 2 else 'dwarf'
 
     def display(self, board):
         """Print the 17x17 bitboard in row-major form (debug helper)."""
