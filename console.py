@@ -9,8 +9,10 @@ one ply per line) and answers a question about that game:
     python3 console.py turn      < game.thud   # 'dwarf' or 'troll' — side to act
     python3 console.py captures  < game.thud   # longest capture from the last move
 
-Exits 0 always; status is conveyed through stdout. Engine reasoning is
-logged to stderr by ``thud.ai_engine.ai_log``.
+Exit status: 0 on handled input (including a reported illegal/malformed
+move), 2 on a usage error (missing or unknown subcommand). All other
+output is on stdout; engine reasoning is logged to stderr by
+``thud.ai_engine.ai_log``.
 """
 
 __author__ = "William Dizon"
@@ -30,9 +32,9 @@ USAGE = "usage: console.py {next_move|validate|turn|captures} < game.thud"
 def replay(ply_lines):
     """Apply every ply in ``ply_lines`` to a fresh classic Gameboard.
 
-    Raises RuntimeError(ply_index, ply_str) on the first illegal move
-    or side-out-of-turn. The leading comma-delimited piece-list line
-    (default positions) is skipped.
+    Raises RuntimeError(ply_index, ply_str) on the first illegal move,
+    side-out-of-turn, or malformed move notation. Blank lines and the
+    leading comma-delimited piece-list line (default positions) are skipped.
     """
     board = Gameboard('classic')
     turn = itertools.cycle(['dwarf', 'troll'])
@@ -40,16 +42,15 @@ def replay(ply_lines):
     for raw in ply_lines:
         move = raw.strip()
         if not move or ',' in move:
-            # comma-delimited line = saved starting position; ignore.
+            # blank line or comma-delimited saved starting position; ignore.
             continue
 
         ply = Ply.parse_string(move)
         if not ply:
-            # First unparseable line ends the game stream (consistent with
-            # the prior implementation's behavior).
-            if not board.ply_list:
-                continue
-            break
+            # A non-blank, non-position line that fails to parse is a
+            # malformed move — report it rather than silently truncating
+            # the game stream (so `validate` answers False on corruption).
+            raise RuntimeError(len(board.ply_list), move)
 
         expected_side = next(turn)
         if ply.token != expected_side:

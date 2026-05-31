@@ -226,3 +226,78 @@ class TestReplayFixture:
             g.ply_list.append(ply)
         # The fixture includes capture plies — pieces removed accordingly.
         assert len(g.dwarfs) < 32  # at least one dwarf captured
+
+
+def _pos(notation):
+    return Ply.notation_to_position(notation)
+
+
+def _board(dwarfs=(), trolls=()):
+    """A classic board cleared of its default armies (thudstone stays at H8).
+
+    Scenarios are built on the fully-playable center row (rank 8, files A-P)
+    plus one diagonal, so every square used is on the octagon.
+    """
+    g = Gameboard('classic')
+    g.dwarfs = Bitboard([_pos(n) for n in dwarfs])
+    g.trolls = Bitboard([_pos(n) for n in trolls])
+    return g
+
+
+class TestClassicCaptureRules:
+    """Lock the canonical classic mechanics: dwarf 'throw' line-length,
+    conditional troll 'shove' capture, multi-capture, and stone-blocking.
+
+    These are the rules the deliverable's 'flawless classic' bar rests on.
+    Each asserts the exact (move, cap, captured) tuple from validate_move;
+    the expected values were verified empirically against the engine.
+    """
+
+    def test_dwarf_throws_one_adjacent_troll(self):
+        # A lone dwarf throws itself one square onto an adjacent troll.
+        g = _board(dwarfs=['D8'], trolls=['C8'])
+        assert g.validate_move(_pos('D8'), _pos('C8')) == (False, True, [_pos('C8')])
+
+    def test_single_dwarf_cannot_throw_two(self):
+        # Throwing two squares needs a backing line of two dwarfs; one can't.
+        g = _board(dwarfs=['E8'], trolls=['C8'])
+        assert g.validate_move(_pos('E8'), _pos('C8')) == (False, False, [])
+
+    def test_two_dwarf_line_throws_two(self):
+        # E8 (front) + F8 (backer) is a line of 2, so the front throws 2.
+        g = _board(dwarfs=['E8', 'F8'], trolls=['C8'])
+        assert g.validate_move(_pos('E8'), _pos('C8')) == (False, True, [_pos('C8')])
+
+    def test_troll_shove_captures_on_single_step(self):
+        # A one-square troll move that lands beside a dwarf is a shove of
+        # length 1: it both moves and captures the adjacent dwarf.
+        g = _board(dwarfs=['C8'], trolls=['E8'])
+        assert g.validate_move(_pos('E8'), _pos('D8')) == (True, True, [_pos('C8')])
+
+    def test_troll_move_not_adjacent_does_not_capture(self):
+        # Same move, but no dwarf adjacent to the landing square -> move only.
+        g = _board(dwarfs=['L8'], trolls=['E8'])
+        assert g.validate_move(_pos('E8'), _pos('D8')) == (True, False, [])
+
+    def test_troll_captures_multiple_adjacent_dwarfs(self):
+        # A shove removes *all* dwarfs adjacent to the landing square.
+        g = _board(dwarfs=['C8', 'D9'], trolls=['E8'])
+        move, cap, captured = g.validate_move(_pos('E8'), _pos('D8'))
+        assert move is True and cap is True
+        assert sorted(captured) == sorted([_pos('C8'), _pos('D9')])
+
+    def test_thudstone_blocks_dwarf_line_move(self):
+        # The H8 stone sits between F8 and J8; the dwarf cannot move across it.
+        g = _board(dwarfs=['F8'])
+        assert g.validate_move(_pos('F8'), _pos('J8')) == (False, False, [])
+
+    def test_troll_cannot_move_two_squares_without_a_shove(self):
+        # Trolls step one square (like a king); two squares needs a troll line.
+        g = _board(trolls=['E8'])
+        assert g.validate_move(_pos('E8'), _pos('C8')) == (False, False, [])
+
+    def test_dwarf_throws_one_diagonally(self):
+        # Diagonals are core (dwarfs move like queens); confirm the throw
+        # generalizes off the orthogonal axis.
+        g = _board(dwarfs=['D4'], trolls=['E5'])
+        assert g.validate_move(_pos('D4'), _pos('E5')) == (False, True, [_pos('E5')])

@@ -3,7 +3,20 @@
 One global game state. The first two WebSocket connections to claim a
 side become the dwarf and troll players; anyone after that is a
 spectator. Players may release and re-claim sides freely (including
-swapping sides) at any time. Either player can reset the game.
+swapping sides) at any time. Either player (but not a spectator) can
+reset the game.
+
+Scope: classic-ruleset play is fully supported over the wire. Two
+deliberate limitations apply to the other rulesets, neither of which
+affects classic:
+
+  * Troll captures are compulsory — when a troll move is also a legal
+    capture, the captured dwarfs are removed automatically. The per-piece
+    capture-selection UI (the GUI's "Compulsory Capturing" toggle) is not
+    exposed over the protocol.
+  * KVT troll multi-capture (a troll jumping again after a capture) is not
+    supported: ``turn_to_act`` flips to the other side after every applied
+    ply, so the follow-up jump would be rejected as out of turn.
 
 Wire protocol (JSON over WebSocket):
 
@@ -29,7 +42,7 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from thud import Gameboard, NoMoveException, Ply
+from thud import Gameboard, Ply
 
 
 ROOT = Path(__file__).parent
@@ -63,6 +76,10 @@ class GameSession:
         if ws is self.troll_ws:
             return 'troll'
         return 'spectator'
+
+    def can_reset(self, ws):
+        """Only a seated player (dwarf/troll) may reset the game."""
+        return self.role_of(ws) != 'spectator'
 
     def auto_assign(self, ws):
         """Give this connection the first open side, or spectator."""
@@ -169,7 +186,10 @@ async def _handle_release(ws):
     await _broadcast(GAME.players_payload())
 
 
-async def _handle_reset(data):
+async def _handle_reset(ws, data):
+    if not GAME.can_reset(ws):
+        await _send(ws, {'type': 'error', 'message': 'spectators cannot reset the game'})
+        return
     ruleset = data.get('ruleset', 'classic')
     if ruleset not in RULESETS:
         ruleset = 'classic'
@@ -218,7 +238,7 @@ async def _handle_move(ws, data):
 _HANDLERS = {
     'claim_side': lambda ws, d: _handle_claim(ws, d),
     'release_side': lambda ws, d: _handle_release(ws),
-    'reset': lambda ws, d: _handle_reset(d),
+    'reset': lambda ws, d: _handle_reset(ws, d),
     'move': lambda ws, d: _handle_move(ws, d),
 }
 

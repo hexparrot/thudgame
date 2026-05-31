@@ -13,9 +13,9 @@ from thud import (
     Ply,
 )
 
+import argparse
 import copy
 import queue
-import re
 import sys
 import threading
 import tkinter
@@ -28,6 +28,14 @@ CPU_POLL_MS = 200
 # How often to advance the "Computer is thinking..." ellipsis. Multiple of
 # CPU_POLL_MS so the dots tick at a steady cadence.
 THINKING_TICK_MS = 500
+# Plies the AI looks ahead when choosing a move (mirrors console.py's LOOKAHEAD).
+LOOKAHEAD = 3
+
+# Non-compulsory-capture selection states (set on the GUI's selection_mode).
+# SELECT_IDLE: not mid-selection; SELECT_ACTIVE: collecting the dwarfs/trolls
+# the player wants this capture to remove before committing the ply.
+SELECT_IDLE = 'idle'
+SELECT_ACTIVE = 'selecting'
 
 class DesktopGUI(tkinter.Frame):
     """Implements the main desktop GUI"""
@@ -38,7 +46,7 @@ class DesktopGUI(tkinter.Frame):
         self.sprites = {}
         self.sprite_lifted = False
         self.review_mode = False
-        self.selection_mode = 'false'
+        self.selection_mode = SELECT_IDLE
         self.selected_pieces = []
         self.displayed_ply = 0
         self.delay_ai = False
@@ -55,7 +63,7 @@ class DesktopGUI(tkinter.Frame):
         self.cpu_troll = tkinter.BooleanVar()
         self.cpu_dwarf = tkinter.BooleanVar()
         self.alt_iconset = tkinter.BooleanVar()
-        self.lookahead_count = 3
+        self.lookahead_count = LOOKAHEAD
 
         self.draw_ui(master)
         self.user_notice.set("")
@@ -85,7 +93,7 @@ class DesktopGUI(tkinter.Frame):
         self.listbox.pack(side='right', fill='both', expand=1)
 
         #"status bar" frame
-        self.canvas = tkinter.Canvas(root, width=BOARD_SIZE, height=BOARD_SIZE)
+        self.canvas = tkinter.Canvas(master, width=BOARD_SIZE, height=BOARD_SIZE)
         self.canvas.pack(expand=True)
         self.clear_sprites_all()
 
@@ -138,8 +146,8 @@ class DesktopGUI(tkinter.Frame):
         # every move inside notate_move, accumulating bindings unnecessarily.
         self.listbox.bind('<<ListboxSelect>>', self.click_listbox_left)
 
-        menubar = tkinter.Menu(root)
-        root.config(menu=menubar)
+        menubar = tkinter.Menu(master)
+        master.config(menu=menubar)
         game_dropdown = tkinter.Menu(menubar)
         option_dropdown = tkinter.Menu(menubar)
 
@@ -223,32 +231,26 @@ class DesktopGUI(tkinter.Frame):
 
     def file_opengame(self):
         """Displays file dialog and then plays out game to end"""
-        side = {    'd': 'dwarf',
-                    'T': 'troll',
-                    'R': 'thudstone' }
-
         self.cpu_troll.set(False)
         self.cpu_dwarf.set(False)
-        imported_plies = []        
-        regex_ply_notation = r"([T|d|R])([A-HJ-P][0-9]+)-([A-HJ-P][0-9]+)(.*)"
-        compiled_notation = re.compile(regex_ply_notation)
-        
+        imported_plies = []
+
         filename = tkinter.filedialog.askopenfilename(title="Open Thudgame", \
                                               multiple=False, \
                                               filetypes=[('thud-game files', '*.thud')])
         if not filename:
             return
-        
+
         with open(filename, "r") as thud_file:
-            for i,line in enumerate(thud_file):
-                m = compiled_notation.search(line)
-                if m:
-                    p = Ply(side.get(m.group(1)), \
-                            Ply.notation_to_position(m.group(2)), \
-                            Ply.notation_to_position(m.group(3)), \
-                            list(map(Ply.notation_to_position, m.group(4).split('x')[1:])))
-                    imported_plies.append(p)
+            for line in thud_file:
+                if not line.strip():
+                    continue
+                ply = Ply.parse_string(line)
+                if ply:
+                    imported_plies.append(ply)
                 else:
+                    # A non-ply line is the saved starting-position header;
+                    # its piece count / contents identify the ruleset.
                     piece_list = line.split(',')
                     if len(piece_list) == 41 or len(piece_list) == 40:
                         self.board.ruleset = 'classic'
@@ -256,7 +258,7 @@ class DesktopGUI(tkinter.Frame):
                         self.board.ruleset = 'kvt'
                     else:
                         self.board.ruleset = 'klash'
-                        
+
         self.displayed_ply = 0
         if self.play_out_moves(imported_plies, len(imported_plies) - 1):
             self.play_out_moves(imported_plies, 0)
@@ -408,7 +410,7 @@ class DesktopGUI(tkinter.Frame):
                 return
             self.sprite_lifted = True
             self.canvas.tag_raise('current')
-        elif self.selection_mode == 'selecting' or \
+        elif self.selection_mode == SELECT_ACTIVE or \
              self.allow_illegal_play.get() or \
              self.board.game_winner or \
              self.board.token_at(self.pickup) == self.board.turn_to_act() or \
@@ -438,12 +440,12 @@ class DesktopGUI(tkinter.Frame):
         if not self.sprite_lifted:
             return
         elif not self.compulsory_capturing.get():
-            if self.selection_mode == 'false':
+            if self.selection_mode == SELECT_IDLE:
                 valid = self.board.validate_move(self.pickup, self.dropoff)
                 if valid[2]:
                     self.user_notice.set("Select each piece to be captured and click capturing piece to finish.")
                     self.selected_pieces = []
-                    self.selection_mode = 'selecting'
+                    self.selection_mode = SELECT_ACTIVE
                     self.pickup_remembered = self.pickup
                     self.dropoff_remembered = self.dropoff
                 elif valid[0]:
@@ -454,11 +456,11 @@ class DesktopGUI(tkinter.Frame):
                 else:
                     self.move_sprite(self.sprites[self.pickup], \
                                      self.pickup)
-            elif self.selection_mode == 'selecting':
+            elif self.selection_mode == SELECT_ACTIVE:
                 self.user_notice.set("Piece at " + str(self.dropoff) + " selected")
                 self.selected_pieces.append(self.dropoff)
                 if self.dropoff == self.dropoff_remembered:
-                    self.selection_mode = 'false'
+                    self.selection_mode = SELECT_IDLE
                     valid = self.check_logic(Ply(self.board.token_at(self.pickup_remembered), \
                                                  self.pickup_remembered, \
                                                  self.dropoff_remembered,
@@ -757,15 +759,25 @@ class DesktopGUI(tkinter.Frame):
         target = 0 if start else len(self.board.ply_list) - 1
         self.play_out_moves(self.board.ply_list, target)
 
-class tkinter_game:    
+class tkinter_game:
+    """Drives a DesktopGUI: either the interactive Tk loop (``play_game``)
+    or a headless AI-vs-AI simulation harness (``simulate_set``) used for
+    tuning the engine. Both operate on the ``ui`` / ``root`` passed in
+    rather than module globals."""
+
+    def __init__(self, ui, root):
+        self.ui = ui
+        self.root = root
+
     def simulate_set(self, trials=5):
         results = []
-        for i in range(trials):
+        for _ in range(trials):
             results.append(self.simulate_game())
         print(results)
+        return results
 
     def simulate_game(self):
-        global ui
+        ui = self.ui
         print('game in progress...')
         ui.newgame_classic()
         ui.cpu_troll.set(True)
@@ -773,27 +785,39 @@ class tkinter_game:
         while not ui.board.game_winner:
             ui.is_cpu_turn()
             if not len(ui.board.ply_list) % 10:
-                print('Ply {0}: trolls {1} to dwarf {2}'.format( \
-                    len(ui.board.ply_list), \
-                    len(ui.board.trolls), \
-                    len(ui.board.dwarfs)))                
-        print('{0} win! trolls {1} to dwarf {2}'.format(ui.board.game_winner, \
-                                                        len(ui.board.trolls), \
+                print('Ply {0}: trolls {1} to dwarf {2}'.format(
+                    len(ui.board.ply_list),
+                    len(ui.board.trolls),
+                    len(ui.board.dwarfs)))
+        print('{0} win! trolls {1} to dwarf {2}'.format(ui.board.game_winner,
+                                                        len(ui.board.trolls),
                                                         len(ui.board.dwarfs)))
         return ui.board.game_winner
 
     def play_game(self):
-        global ui
-        global root
-        ui.newgame_classic()
-        ui.start_cpu_loop()
-        root.mainloop()
+        self.ui.newgame_classic()
+        self.ui.start_cpu_loop()
+        self.root.mainloop()
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description='Thud! desktop GUI (Tkinter).')
+    parser.add_argument(
+        '--simulate', type=int, metavar='N', default=None,
+        help='play N headless AI-vs-AI classic games and print the results '
+             'instead of launching the interactive GUI (engine-tuning tool)')
+    args = parser.parse_args(argv)
+
+    root = tkinter.Tk()
+    root.wm_resizable(0, 0)
+    ui = DesktopGUI(root)
+    game = tkinter_game(ui, root)
+
+    if args.simulate is not None:
+        game.simulate_set(args.simulate)
+    else:
+        game.play_game()
+
 
 if __name__ == '__main__':
-    root = tkinter.Tk()
-    root.wm_resizable(0,0)
-    ui = DesktopGUI(root)
-
-    game = tkinter_game()
-    game.play_game()
-    #game.simulate_set(15)
+    main()
