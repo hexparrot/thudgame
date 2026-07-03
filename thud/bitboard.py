@@ -30,6 +30,14 @@ class Bitboard:
         self.value = 0
         if positions:
             for p in positions:
+                # Reject anything that isn't a real board square. Without this
+                # a large negative position makes ``1 << (N-1-p)`` allocate a
+                # multi-gigabyte integer (a one-message DoS via the server),
+                # and a non-int blows up with a confusing TypeError deep in the
+                # shift. Callers that pass untrusted input (Gameboard.is_dumb)
+                # already catch ValueError/TypeError and treat it as illegal.
+                if not isinstance(p, int) or not (0 <= p < Bitboard.N):
+                    raise ValueError("position out of range: {!r}".format(p))
                 self.value |= 1 << (Bitboard.N - 1 - p)
 
     def __str__(self):
@@ -44,6 +52,11 @@ class Bitboard:
     def __getitem__(self, key):
         if isinstance(key, slice):
             return str(self)[key]
+        # Off-board indices read as unset rather than raising. token_at and
+        # neighbour walks probe positions just past the edge (p < 0 or
+        # p >= N); a key >= N would otherwise be a negative shift -> ValueError.
+        if not (0 <= key < Bitboard.N):
+            return 0
         return (self.value >> (Bitboard.N - 1 - key)) & 1
 
     def __iter__(self):

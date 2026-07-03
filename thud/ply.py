@@ -90,17 +90,35 @@ class Ply:
 
     @staticmethod
     def position_to_notation(position):
-        """Integer position -> 'A1'-style notation."""
-        conv = Ply.position_to_tuple(position)
-        file = Ply.to_letter.get(int(conv[0]))
-        rank = str(int(conv[1]))
-        return file + rank
+        """Integer board position -> 'A1'-style notation.
+
+        Raises ValueError for a position off the 15x15 labelled grid (file or
+        rank outside 1..15), rather than concatenating a None file into the
+        string with a confusing TypeError.
+        """
+        file, rank = Ply.position_to_tuple(position)
+        letter = Ply.to_letter.get(int(file))
+        if letter is None or not (1 <= int(rank) <= 15):
+            raise ValueError("off-board position: {!r}".format(position))
+        return letter + str(int(rank))
 
     @staticmethod
     def notation_to_position(notation):
-        """'A1'-style notation -> integer position."""
+        """'A1'-style notation -> integer position (0..288).
+
+        Raises ValueError if the file letter is not A-P (excluding I) or the
+        rank is outside 1..15 — i.e. anything off the labelled board.
+        """
         file = Ply.to_number.get(notation[0])
-        return file + int(notation[1:]) * 17
+        if file is None:
+            raise ValueError("bad file in notation: {!r}".format(notation))
+        try:
+            rank = int(notation[1:])
+        except ValueError:
+            raise ValueError("bad rank in notation: {!r}".format(notation))
+        if not (1 <= rank <= 15):
+            raise ValueError("rank out of range in notation: {!r}".format(notation))
+        return file + rank * 17
 
     @staticmethod
     def tuple_to_position(notation):
@@ -115,23 +133,27 @@ class Ply:
         return math.sqrt(pow(a[0] - b[0], 2) + pow(a[1] - b[1], 2))
 
     _SIDE_FROM_ABBR = {'d': 'dwarf', 'T': 'troll', 'R': 'thudstone'}
+    # Ranks are constrained to 1..15 so off-board ranks (0, or >=16) fail to
+    # parse and yield None rather than an off-board Ply.
     _PLY_NOTATION_RE = re.compile(
-        r"([TdR]) ?([A-HJ-P])([0-9]+)-([A-HJ-P])([0-9]+)(.*)"
+        r"([TdR]) ?([A-HJ-P])(1[0-5]|[1-9])-([A-HJ-P])(1[0-5]|[1-9])(.*)"
     )
 
     @staticmethod
     def parse_string(ply_notation):
         """Parse one ply of game notation (e.g. 'dF1-G2', 'TG7-F7xE7').
 
-        Returns ``None`` if the string does not match the ply grammar.
+        Returns ``None`` if the string does not match the ply grammar or
+        names an off-board square (in the move or any capture).
         """
         m = Ply._PLY_NOTATION_RE.search(str(ply_notation))
         if not m:
             return None
-        captures = [Ply.notation_to_position(c) for c in m.group(6).split('x')[1:]]
-        return Ply(
-            Ply._SIDE_FROM_ABBR.get(m.group(1)),
-            Ply.notation_to_position(m.group(2) + m.group(3)),
-            Ply.notation_to_position(m.group(4) + m.group(5)),
-            captures,
-        )
+        try:
+            origin = Ply.notation_to_position(m.group(2) + m.group(3))
+            dest = Ply.notation_to_position(m.group(4) + m.group(5))
+            captures = [Ply.notation_to_position(c)
+                        for c in m.group(6).split('x')[1:]]
+        except ValueError:
+            return None
+        return Ply(Ply._SIDE_FROM_ABBR.get(m.group(1)), origin, dest, captures)

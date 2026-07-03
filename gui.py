@@ -404,7 +404,11 @@ class DesktopGUI(tkinter.Frame):
              self.board.ply_list and \
              self.board.ply_list[-1].token == 'troll' and \
              self.board.ply_list[-1].captured:
-            if self.board.ply_list[-2].token == 'troll' and \
+            # Guard the [-2]/[-3] history reads: a KVT game whose recent
+            # history is shorter than 3 plies (e.g. a loaded game starting
+            # with a troll capture) would otherwise IndexError on this click.
+            if len(self.board.ply_list) >= 3 and \
+               self.board.ply_list[-2].token == 'troll' and \
                self.board.ply_list[-3].token == 'troll' and \
                self.board.trolls[self.pickup]:
                 return
@@ -520,9 +524,20 @@ class DesktopGUI(tkinter.Frame):
 
     def execute_ply(self, fullply):
         """Shortcut function to execute all backend updates along with UI sprites"""
+        if fullply.origin == fullply.dest and fullply.token == 'troll':
+            # Klash materialization: a troll appears on a central square.
+            # There is no origin sprite to move; add_troll updates the board
+            # and the materialized-troll count, then rebuild sprites.
+            self.board.add_troll(fullply.dest)
+            self.board.ply_list.append(fullply)
+            self.notate_move(fullply)
+            self.displayed_ply = len(self.board.ply_list) - 1
+            self.sync_sprites()
+            return
+
         for target in fullply.captured:
             self.clear_sprite(self.sprites[target])
-        
+
         self.move_sprite(self.sprites[fullply.origin], fullply.dest)
         self.board.apply_ply(fullply)
         self.board.ply_list.append(fullply)
@@ -637,10 +652,18 @@ class DesktopGUI(tkinter.Frame):
         self._cpu_tick()
 
     def _cpu_tick(self):
-        self._drain_ai_results()
-        self._maybe_start_ai()
-        self._animate_thinking()
-        self.master.after(CPU_POLL_MS, self._cpu_tick)
+        try:
+            self._drain_ai_results()
+            self._maybe_start_ai()
+            self._animate_thinking()
+        except Exception as e:
+            # Never let an exception escape before the reschedule below: Tk
+            # swallows it but the poll loop would then stop forever, hanging
+            # the game on "Computer is thinking...". Surface it and keep going.
+            self.delay_ai = False
+            self.user_notice.set("internal error: {}".format(e))
+        finally:
+            self.master.after(CPU_POLL_MS, self._cpu_tick)
 
     def _maybe_start_ai(self):
         """Spawn a worker if it's a CPU turn and one isn't already running."""
@@ -677,13 +700,32 @@ class DesktopGUI(tkinter.Frame):
         except Exception as ex:  # pragma: no cover - defensive
             self.ai_queue.put(('error', ex))
 
+    def _ai_ply_is_current(self, ply):
+        """True if an AI-computed ply still applies to the live board.
+
+        Guards against a worker result arriving after the user rebuilt the
+        position (e.g. clicked a history ply), which used to KeyError in
+        execute_ply on a now-missing origin sprite and — via the un-guarded
+        _cpu_tick — permanently hang the AI loop.
+        """
+        if self.review_mode or self.board.game_winner:
+            return False
+        if self.board.turn_to_act() != ply.token:
+            return False
+        if ply.origin == ply.dest:  # materialization: no origin sprite
+            return True
+        return ply.origin in self.sprites
+
     def _drain_ai_results(self):
         """Consume results posted by _ai_worker. Tk thread only."""
         try:
             while True:
                 kind, payload = self.ai_queue.get_nowait()
                 if kind == 'ply':
-                    self.execute_ply(payload)
+                    if self._ai_ply_is_current(payload):
+                        self.execute_ply(payload)
+                    # else: board was rebuilt while the worker was thinking;
+                    # discard the stale result rather than crashing.
                 elif kind == 'nomove':
                     print("{0} has no moves available.".format(payload))
                     self.board.game_winner = 'dwarf' if payload == 'troll' else 'troll'
@@ -740,10 +782,14 @@ class DesktopGUI(tkinter.Frame):
         if self.delay_ai or self.review_mode or not self.board.ply_list:
             return
         plies = list(self.board.ply_list[:-1])
-        ruleset = self.board.ruleset
-        self.newgame_common(ruleset)
-        for p in plies:
-            self.execute_ply(p)
+        if plies:
+            # Replay through play_out_moves, which validates each ply and
+            # handles klash materialization (origin == dest). The old manual
+            # execute_ply loop crashed on materialization plies (no origin
+            # sprite) and desynced the klash_trolls count.
+            self.play_out_moves(plies, len(plies) - 1)
+        else:
+            self.newgame_common(self.board.ruleset)
         self.update_ui()
 
     def _step_replay(self, delta):

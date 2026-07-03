@@ -43,6 +43,7 @@ from pathlib import Path
 from aiohttp import WSMsgType, web
 
 from thud import Gameboard, Ply
+from thud.bitboard import Bitboard
 
 
 ROOT = Path(__file__).parent
@@ -150,7 +151,9 @@ async def _send(ws, payload):
 async def _broadcast(payload):
     msg = json.dumps(payload)
     dead = []
-    for ws in GAME.clients:
+    # Iterate a snapshot: a client can connect/disconnect during an await
+    # below, mutating GAME.clients mid-iteration (RuntimeError otherwise).
+    for ws in list(GAME.clients):
         if ws.closed:
             dead.append(ws)
             continue
@@ -211,8 +214,26 @@ async def _handle_move(ws, data):
 
     origin = data.get('origin')
     dest = data.get('dest')
-    if not (isinstance(origin, int) and isinstance(dest, int)):
+    if not (isinstance(origin, int) and isinstance(dest, int)
+            and not isinstance(origin, bool) and not isinstance(dest, bool)):
         await _send(ws, {'type': 'error', 'message': 'origin/dest must be ints'})
+        return
+    # Reject off-board indices before the engine touches them. A huge
+    # negative index would otherwise make Bitboard allocate a giant integer
+    # (a one-message memory-exhaustion DoS).
+    if not (0 <= origin < Bitboard.N and 0 <= dest < Bitboard.N):
+        await _send(ws, {'type': 'error', 'message': 'origin/dest out of range'})
+        return
+
+    # You may only move your own pieces (in KVT a dwarf may also push the
+    # thudstone). Without this a player could move the opponent's pieces on
+    # their own turn, corrupting the game.
+    mover_piece = GAME.board.token_at(origin)
+    allowed = mover_piece == role or (
+        role == 'dwarf' and mover_piece == 'thudstone'
+        and GAME.board.ruleset == 'kvt')
+    if not allowed:
+        await _send(ws, {'type': 'error', 'message': 'you can only move your own pieces'})
         return
 
     move, cap, captured = GAME.board.validate_move(origin, dest)
@@ -224,13 +245,15 @@ async def _handle_move(ws, data):
     # Tkinter's "compulsory capturing" default (the only mode supported
     # over the wire — the per-piece capture selection UI doesn't exist
     # here yet).
-    token = GAME.board.token_at(origin)
-    ply = Ply(token, origin, dest, captured if cap else [])
+    ply = Ply(mover_piece, origin, dest, captured if cap else [])
     GAME.board.apply_ply(ply)
     GAME.board.ply_list.append(ply)
-    outcome = GAME.board.get_game_outcome()
-    if outcome:
-        GAME.board.game_winner = outcome
+    # Scored terminal (no move cap for interactive play): ends on rout, KVT
+    # objective, klash mobilization, or a stalemate (no legal move -> draw
+    # by material), and can report a 'draw'.
+    term = GAME.board.result(max_plies=None)
+    if term:
+        GAME.board.game_winner = term['winner']
 
     await _broadcast_state()
 
