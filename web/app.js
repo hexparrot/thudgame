@@ -62,28 +62,50 @@
 
   // ----- WebSocket ----------------------------------------------------
   const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(`${wsProto}//${location.host}/ws`);
+  const WS_URL = `${wsProto}//${location.host}/ws`;
+  const RECONNECT_MIN_MS = 1000;
+  const RECONNECT_MAX_MS = 15000;
+  let ws = null;
+  let reconnectDelay = RECONNECT_MIN_MS;
+  let reconnectTimer = 0;
 
-  ws.addEventListener('open', () => setNotice('Connected.', 1500));
-  ws.addEventListener('close', () => {
-    setNotice('Disconnected from server.', 0, true);
-    roleEl.textContent = 'Offline';
-  });
-  ws.addEventListener('error', () => setNotice('Connection error.', 0, true));
+  function connect() {
+    ws = new WebSocket(WS_URL);
 
-  ws.addEventListener('message', (event) => {
-    let msg;
-    try { msg = JSON.parse(event.data); } catch (e) { return; }
-    switch (msg.type) {
-      case 'state':   onState(msg);   break;
-      case 'role':    onRole(msg);    break;
-      case 'players': onPlayers(msg); break;
-      case 'error':   setNotice(msg.message, 3000, true); break;
-    }
-  });
+    ws.addEventListener('open', () => {
+      reconnectDelay = RECONNECT_MIN_MS;  // reset backoff after a good connect
+      setNotice('Connected.', 1500);
+      // The server re-sends role + full state on connect, so a reconnect
+      // resynchronizes automatically — nothing else to do here.
+    });
+
+    ws.addEventListener('close', () => {
+      // Auto-reconnect with exponential backoff instead of leaving the UI
+      // dead until a manual page reload.
+      setNotice(`Disconnected. Reconnecting in ${Math.round(reconnectDelay / 1000)}s…`,
+                0, true);
+      roleEl.textContent = 'Offline';
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(connect, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_MS);
+    });
+
+    ws.addEventListener('error', () => setNotice('Connection error.', 0, true));
+
+    ws.addEventListener('message', (event) => {
+      let msg;
+      try { msg = JSON.parse(event.data); } catch (e) { return; }
+      switch (msg.type) {
+        case 'state':   onState(msg);   break;
+        case 'role':    onRole(msg);    break;
+        case 'players': onPlayers(msg); break;
+        case 'error':   onError(msg);   break;
+      }
+    });
+  }
 
   function send(payload) {
-    if (ws.readyState !== WebSocket.OPEN) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
     ws.send(JSON.stringify(payload));
   }
 
@@ -103,6 +125,13 @@
       `Dwarf: ${msg.dwarf_taken ? 'taken' : 'open'}    ` +
       `Troll: ${msg.troll_taken ? 'taken' : 'open'}\n` +
       `Spectators: ${msg.spectator_count}`;
+  }
+
+  function onError(msg) {
+    setNotice(msg.message, 3000, true);
+    // A rejected move: redraw from the last authoritative state so the
+    // dragged piece snaps back immediately (no fixed timer needed).
+    render();
   }
 
   function setNotice(text, holdMs, isError) {
@@ -132,7 +161,9 @@
     dwarfCountEl.textContent = lastState.board.dwarfs.length;
     trollCountEl.textContent = lastState.board.trolls.length;
     if (lastState.winner) {
-      turnEl.textContent = `${capitalize(lastState.winner)} win (${rulesetLabel(lastState.ruleset)})`;
+      const label = lastState.winner === 'draw'
+        ? 'Draw' : `${capitalize(lastState.winner)} win`;
+      turnEl.textContent = `${label} (${rulesetLabel(lastState.ruleset)})`;
     } else {
       turnEl.textContent = `${capitalize(lastState.turn)} to move (${rulesetLabel(lastState.ruleset)})`;
     }
@@ -219,20 +250,30 @@
 
     if (dest !== null && dest !== drag.originPosition) {
       send({ type: 'move', origin: drag.originPosition, dest });
-      // Server will broadcast new state shortly; meanwhile re-render
-      // from the last known state so the sprite snaps back if rejected.
-      setTimeout(render, 200);
-    } else {
-      render();  // snap back
     }
+    // Snap back to the last authoritative state immediately. A legal move is
+    // redrawn when the server broadcasts new state (onState); an illegal one
+    // when the server replies with an error (onError). No fixed timer, which
+    // used to flicker on slow links and mask rejected moves for 200ms.
+    render();
     drag.sprite.classList.remove('dragging');
     drag = null;
+  }
+
+  function onDragCancel() {
+    // Pointer/touch interrupted mid-drag (e.g. touchcancel, context menu):
+    // drop the drag and restore the board rather than leaving a stuck sprite.
+    if (!drag) return;
+    drag.sprite.classList.remove('dragging');
+    drag = null;
+    render();
   }
 
   document.addEventListener('mousemove', onMouseMove);
   document.addEventListener('mouseup', onMouseUp);
   document.addEventListener('touchmove', onMouseMove, { passive: false });
   document.addEventListener('touchend', onMouseUp);
+  document.addEventListener('touchcancel', onDragCancel);
 
   // ----- Menu buttons -------------------------------------------------
   document.getElementById('menubar').addEventListener('click', (e) => {
@@ -247,4 +288,7 @@
       send({ type: 'release_side' });
     }
   });
+
+  // Open the socket (and keep it open via reconnect-on-close above).
+  connect();
 })();

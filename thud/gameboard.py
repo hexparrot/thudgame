@@ -16,6 +16,14 @@ from .bitboard import Bitboard
 from .ply import Ply
 
 
+# Klash: trolls stop materializing once this many have appeared.
+KLASH_TROLL_LIMIT = 6
+# Self-play no-progress cutoff. Real Thud has no move limit (games end by
+# agreement/score); this is the mechanical stand-in so AI-vs-AI / ML
+# self-play always terminates. See Gameboard.result().
+DEFAULT_MAX_PLIES = 400
+
+
 class Gameboard:
     def __init__(self, ruleset='classic'):
         self.BOARD_WIDTH = Bitboard.BOARD_WIDTH
@@ -118,6 +126,34 @@ class Gameboard:
         """Union Bitboard of all squares currently occupied by any piece."""
         return self.dwarfs | self.trolls | self.thudstone
 
+    def snapshot(self):
+        """Return a cheap, opaque snapshot of the mutable game state.
+
+        For search / self-play this is dramatically cheaper than
+        ``copy.deepcopy`` — it captures four ints plus a couple of scalars
+        rather than walking the whole object graph. Pair with restore():
+        snapshot, apply plies, evaluate, restore. (The bundled heuristic AI
+        still deep-copies for isolation; wiring it onto snapshot/restore is
+        a future throughput win — see FIXUP.MD ML-readiness.)
+        """
+        return (self.dwarfs.value, self.trolls.value, self.thudstone.value,
+                self.klash_trolls, len(self.ply_list), self.game_winner)
+
+    def restore(self, snap):
+        """Restore state captured by :meth:`snapshot`.
+
+        ``ply_list`` is truncated back to its snapshot length (entries
+        appended since the snapshot are dropped); earlier entries are left
+        untouched.
+        """
+        dwarfs, trolls, thudstone, klash_trolls, ply_len, winner = snap
+        self.dwarfs = Bitboard.create(dwarfs)
+        self.trolls = Bitboard.create(trolls)
+        self.thudstone = Bitboard.create(thudstone)
+        self.klash_trolls = klash_trolls
+        del self.ply_list[ply_len:]
+        self.game_winner = winner
+
     def token_at(self, position):
         """Return 'troll' / 'dwarf' / 'thudstone' / 'empty' / None at position."""
         if self.trolls[position]:
@@ -137,7 +173,13 @@ class Gameboard:
     def apply_ply(self, ply):
         """Apply ``ply`` to the underlying bitboards (no validation)."""
         if ply.token == 'troll':
-            self.trolls = self.trolls & ~Bitboard([ply.origin]) | Bitboard([ply.dest])
+            if ply.origin == ply.dest:
+                # Klash materialization: a troll appears on an empty central
+                # square (origin == dest). Route through add_troll so the
+                # materialized-troll count stays in sync with the win check.
+                self.add_troll(ply.dest)
+            else:
+                self.trolls = self.trolls & ~Bitboard([ply.origin]) | Bitboard([ply.dest])
             self.dwarfs = self.dwarfs & ~Bitboard(ply.captured)
         elif ply.token == 'dwarf':
             self.dwarfs = self.dwarfs & ~Bitboard([ply.origin]) | Bitboard([ply.dest])
@@ -284,15 +326,17 @@ class Gameboard:
             squares = self.get_range(origin, dest)
             if squares[0] == 'dwarf':
                 del squares[0]
-                if not self.check_if_all(squares, 'empty'):
-                    return False
+                return self.check_if_all(squares, 'empty')
             elif squares[0] == 'troll':
                 del squares[0]
                 if len(squares) > max_troll_move():
                     return False
-                if not self.check_if_all(squares, 'empty'):
-                    return False
+                return self.check_if_all(squares, 'empty')
             elif squares[0] == 'thudstone':
+                # Only KVT has a moveable thudstone. In classic/klash the
+                # stone is fixed, so any "move" of it is illegal.
+                if self.ruleset != 'kvt':
+                    return False
                 if not len(squares) == 2 or not squares[1] == 'empty':
                     return False
                 count, count2 = 0, 0
@@ -301,9 +345,11 @@ class Gameboard:
                         count += 1
                     if self.dwarfs[dest + i]:
                         count2 += 1
-                if count < 2 or count2 < 2:
-                    return False
-            return True
+                return count >= 2 and count2 >= 2
+            # Origin square is empty (or off-board): not a legal move. Falling
+            # through to True let a player "move" an empty square as a free
+            # pass, flipping the turn without changing the board.
+            return False
 
         move, cap = None, None
 
@@ -336,7 +382,10 @@ class Gameboard:
         def check_mobilized():
             """True if all dwarfs form one connected component."""
             pieces = self.dwarfs.get_bits()
-            openset = [next(pieces)]
+            first = next(pieces, None)
+            if first is None:
+                return False
+            openset = [first]
             closedset = []
             while openset:
                 closedset.append(openset[0])
@@ -348,14 +397,18 @@ class Gameboard:
 
         def check_thudstone_saved():
             """Dwarf KVT win: thudstone reached row 1 between files F and K."""
+            stone = list(self.thudstone.get_bits())
+            if not stone:
+                return False
             goal_squares = list(map(Ply.tuple_to_position, [(6,1),(7,1),(8,1),(9,1),(10,1)]))
-            if list(self.thudstone.get_bits())[0] in goal_squares:
-                return True
+            return stone[0] in goal_squares
 
         def check_thudstone_captured():
             """Troll KVT win: thudstone surrounded by 3+ trolls."""
-            if len(self.tokens_adjacent(list(self.thudstone.get_bits())[0], 'troll')) >= 3:
-                return True
+            stone = list(self.thudstone.get_bits())
+            if not stone:
+                return False
+            return len(self.tokens_adjacent(stone[0], 'troll')) >= 3
 
         def klash_win_conditions():
             if (self.turn_to_act() == 'troll'
@@ -388,6 +441,75 @@ class Gameboard:
             return kvt_win_conditions()
         elif self.ruleset == 'klash':
             return klash_win_conditions()
+
+    def find_materializations(self):
+        """Klash: yield troll materialization plies (origin == dest on a
+        central square). Empty for non-klash boards or once the troll
+        limit is reached. apply_ply routes these through add_troll."""
+        if self.ruleset != 'klash' or self.klash_trolls >= KLASH_TROLL_LIMIT:
+            return
+        for pos in self.get_default_positions('troll', 'classic'):
+            if self.token_at(pos) == 'empty':
+                yield Ply('troll', pos, pos, [])
+
+    def troll_material(self):
+        """Material differential from the troll's perspective using the
+        official Thud scoring weight (dwarfs 1 each, trolls 4 each)."""
+        return 4 * len(self.trolls) - len(self.dwarfs)
+
+    def has_legal_move(self, token):
+        """True if ``token`` has any legal move, capture, or (klash)
+        materialization available right now."""
+        for _ in self.find_caps(token):
+            return True
+        for _ in self.find_moves(token):
+            return True
+        if token == 'troll':
+            for _ in self.find_materializations():
+                return True
+        return False
+
+    def _scored_terminal(self, reason):
+        """Build a terminal descriptor decided on surviving material."""
+        score = self.troll_material()
+        if score > 0:
+            winner = 'troll'
+        elif score < 0:
+            winner = 'dwarf'
+        else:
+            winner = 'draw'
+        return {'winner': winner, 'score': score, 'reason': reason}
+
+    def result(self, max_plies=DEFAULT_MAX_PLIES):
+        """Return a scored terminal descriptor, or None if still in play.
+
+        The descriptor is ``{'winner', 'score', 'reason'}``: winner is
+        'dwarf' / 'troll' / 'draw', score is the troll-perspective
+        material differential (4*trolls - dwarfs), and reason is:
+
+          'win'     - an engine win condition fired (rout / KVT objective /
+                      klash mobilization); winner is that side.
+          'no-move' - the side to move has no legal move; the battle is
+                      over and decided on surviving material (Thud's real
+                      ending, and a stalemate guard).
+          'cutoff'  - the no-progress move cap was hit (self-play only);
+                      decided on material.
+
+        Unlike get_game_outcome (which detects rout only and can stay None
+        forever), this always becomes non-None eventually, so AI-vs-AI and
+        ML self-play cannot hang. Pass ``max_plies=None`` to disable the
+        cutoff (e.g. interactive human play).
+        """
+        winner = self.get_game_outcome()
+        if winner:
+            return {'winner': winner,
+                    'score': self.troll_material(),
+                    'reason': 'win'}
+        if not self.has_legal_move(self.turn_to_act()):
+            return self._scored_terminal('no-move')
+        if max_plies is not None and len(self.ply_list) >= max_plies:
+            return self._scored_terminal('cutoff')
+        return None
 
     def make_set(self, direction, distance, destinations):
         """Convert a set of destination positions into (origin, dest, direction) triples."""

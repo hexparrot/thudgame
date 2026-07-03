@@ -17,7 +17,7 @@ __license__ = "MIT License"
 __version__ = "1.8.0"
 __email__ = "wdchromium@gmail.com"
 
-from .ai_engine import AIEngine, ai_log
+from .ai_engine import AIEngine, ai_log, seed
 from .bitboard import Bitboard
 from .gameboard import Gameboard
 from .influence_map import InfluenceMap
@@ -31,4 +31,5 @@ __all__ = [
     'NoMoveException',
     'Ply',
     'ai_log',
+    'seed',
 ]

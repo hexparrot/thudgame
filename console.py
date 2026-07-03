@@ -23,7 +23,7 @@ __email__ = "wdchromium@gmail.com"
 import itertools
 import sys
 
-from thud import AIEngine, Gameboard, Ply
+from thud import AIEngine, Gameboard, NoMoveException, Ply
 
 LOOKAHEAD = 3
 USAGE = "usage: console.py {next_move|validate|turn|captures} < game.thud"
@@ -116,12 +116,23 @@ def main(argv):
     ply_lines = sys.stdin.readlines()
     try:
         result = COMMANDS[argv[1]](ply_lines)
+    except NoMoveException as e:
+        # C1: next_move on a routed/blocked (terminal) position has no move
+        # to offer. Emit a defined sentinel on stdout — matching next_move's
+        # other error path — instead of crashing with a traceback.
+        print('no-move:{}'.format(e.token))
+        return 0
     except RuntimeError as e:
         if argv[1] == 'next_move':
             print('{}:{}'.format(e.args[0], e.args[1]))
+            return 0
         elif argv[1] == 'validate':
             print('False')
-        return 0
+            return 0
+        # C2: turn/captures used to swallow this silently (exit 0, no output),
+        # indistinguishable from a valid empty result. Surface it and fail.
+        print('error: illegal move at ply {}: {}'.format(*e.args), file=sys.stderr)
+        return 1
 
     if result is not None:
         print(result)

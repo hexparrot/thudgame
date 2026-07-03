@@ -31,6 +31,15 @@ ai_log.addHandler(_handler)
 # first real candidate always wins. Matches the default Ply.score sentinel.
 WORST_SCORE = -100
 
+# Engine RNG. Kept separate from the global ``random`` so ML self-play can
+# seed it for reproducible games without perturbing the rest of the process.
+_rng = random.Random()
+
+
+def seed(value):
+    """Seed the engine's move-selection RNG (for reproducible self-play)."""
+    _rng.seed(value)
+
 
 class AIEngine(object):
     def __init__(self, board):
@@ -125,25 +134,45 @@ class AIEngine(object):
         return count
 
     def nonoptimal_troll_moves(self):
-        """Pick troll moves that close distance to the nearest dwarf."""
-        def alternate_direction(general_direction):
-            """If our preferred square is blocked, pick a related direction
-            with at least one vector preserved. Only reached when a troll
-            is otherwise immobilized (e.g., next to the thudstone)."""
-            candidates = []
-            significant_vector_f = general_direction[0] or 0
-            significant_vector_r = general_direction[1] or 0
+        """Pick troll moves that close distance to the nearest dwarf.
 
-            if significant_vector_f and significant_vector_r:
-                candidates.append((significant_vector_f, 0))
-                candidates.append((0, significant_vector_r))
-            elif significant_vector_f:
-                candidates.append((significant_vector_f, -1))
-                candidates.append((significant_vector_f, 1))
-            elif significant_vector_r:
-                candidates.append((-1, significant_vector_r))
-                candidates.append((1, significant_vector_r))
-            return random.choice(candidates)
+        For the closest troll/dwarf pair(s), step the troll toward the
+        dwarf; if that square is blocked, try a bounded set of related
+        directions and finally every king step. A troll that is fully
+        boxed in contributes no move — the old code looped forever here
+        because ``token_at`` returns None off-board (never 'empty') and the
+        two alternates it tried could stay blocked indefinitely.
+        """
+        def candidate_directions(delta):
+            """Yield 1-step offsets to try: the preferred direction first,
+            then related alternates, then every remaining king step. Never
+            yields the zero move, never repeats a direction."""
+            f = delta[0] or 0
+            r = delta[1] or 0
+            ordered = [(f, r)]
+            if f and r:
+                ordered += [(f, 0), (0, r)]
+            elif f:
+                ordered += [(f, -1), (f, 1)]
+            elif r:
+                ordered += [(-1, r), (1, r)]
+            ordered += [(a, b) for a in (-1, 0, 1) for b in (-1, 0, 1)]
+            seen = set()
+            for d in ordered:
+                if d == (0, 0) or d in seen:
+                    continue
+                seen.add(d)
+                yield self.board.delta_to_direction(d)
+
+        def step_toward(t, d):
+            """A 1-step troll move from t toward d that lands on an empty
+            square, or None if the troll is boxed in."""
+            delta = self.board.get_delta(Ply.position_to_tuple(t),
+                                         Ply.position_to_tuple(d))
+            for direction in candidate_directions(delta):
+                if self.board.token_at(t + direction) == 'empty':
+                    return Ply('troll', t, t + direction, [])
+            return None
 
         lowest = 100
         candidates = []
@@ -155,13 +184,9 @@ class AIEngine(object):
                     lowest = hypotenuse
                     candidates = []
                 if hypotenuse == lowest:
-                    delta = self.board.get_delta(Ply.position_to_tuple(t),
-                                                 Ply.position_to_tuple(d))
-                    direction = self.board.delta_to_direction(delta)
-                    while self.board.token_at(t + direction) != 'empty':
-                        delta = alternate_direction(delta)
-                        direction = self.board.delta_to_direction(delta)
-                    candidates.append(Ply('troll', t, t + direction, []))
+                    ply = step_toward(t, d)
+                    if ply is not None:
+                        candidates.append(ply)
         return candidates
 
     def filter_dwarfs_can_reach(self, dense_spots):
@@ -192,19 +217,28 @@ class AIEngine(object):
         return candidates
 
     def filter_best(self, token, candidates, variance_pct=0):
-        """Pick a random ply from those within ``variance_pct`` of the best score."""
+        """Pick a random ply from those within ``variance_pct`` of the best score.
+
+        Returns a falsy sentinel ``Ply(None, ...)`` when there are no
+        candidates. The acceptance band is measured relative to the
+        magnitude of the best score, ``best - abs(best) * variance_pct``,
+        so it works when scores are negative (the troll's material score
+        usually is). The old ``best * (1 - variance_pct)`` inverted for
+        negative bests and could reject every candidate, spuriously
+        raising NoMoveException with legal moves on the board.
+        """
+        candidates = list(candidates)
+        if not candidates:
+            return Ply(None, None, None, None)
         for p in candidates:
             scratch = AIEngine(self.board)
             scratch.apply((p,))
             p.score = scratch.score(token)
-        candidates = sorted(candidates, key=lambda v: v.score, reverse=True)
-
-        top = list(filter(
-            lambda p: p.score >= candidates[0].score * (1 - variance_pct),
-            candidates))
-        if top:
-            return random.choice(top)
-        return Ply(None, None, None, None)
+        candidates.sort(key=lambda v: v.score, reverse=True)
+        best = candidates[0].score
+        threshold = best - abs(best) * variance_pct
+        top = [p for p in candidates if p.score >= threshold]
+        return _rng.choice(top)
 
     @staticmethod
     def predict_future(board, firstply, lookahead, token):
@@ -246,7 +280,9 @@ class AIEngine(object):
 
         if not len(b.board.dwarfs):
             raise NoMoveException('dwarf')
-        elif not len(b.board.trolls):
+        # Klash starts with zero trolls on the board (they materialize during
+        # play), so an empty troll bitboard is only "routed" outside klash.
+        if not len(b.board.trolls) and b.board.ruleset != 'klash':
             raise NoMoveException('troll')
 
         if token == 'troll':
@@ -265,7 +301,12 @@ class AIEngine(object):
                 if tsb:
                     decision = tsb
                 else:
-                    decision = b.filter_best(token, b.nonoptimal_troll_moves())
+                    # nonoptimal moves, plus klash materializations (empty in
+                    # other rulesets). Materializing adds a troll (+4 material),
+                    # so filter_best naturally prefers it early in klash.
+                    fallback = (b.nonoptimal_troll_moves()
+                                + list(b.board.find_materializations()))
+                    decision = b.filter_best(token, fallback)
 
             ai_log.info('# threats: %i', len(b.threats))
             ai_log.debug('%s', ', '.join(str(s) for s in b.threats))
@@ -306,12 +347,17 @@ class AIEngine(object):
                         break
 
                 if tsb:
+                    # Drop a None/sentinel best_move: predict_future would
+                    # apply(None) and crash with AttributeError otherwise.
+                    ranked = [p for p in (tsb, best_move) if p]
                     decision = AIEngine.select_best_future(
-                        b.board, [tsb, best_move], lookahead, token)
+                        b.board, ranked, lookahead, token)
                 elif best_move:
                     decision = best_move
                 else:
-                    decision = next(b.board.find_moves('dwarf'))
+                    # No captures/setups/blocks/influence candidates: fall back
+                    # to any legal move, or None -> NoMoveException below.
+                    decision = next(b.board.find_moves('dwarf'), None)
 
             ai_log.info('# threats: %i', len(list(b.threats)))
             ai_log.debug('%s', ', '.join(str(s) for s in b.threats))
